@@ -112,7 +112,7 @@ on the console, and that string shows in English.
 
 ## Scripts and direction
 
-egui 0.36 lays text out glyph by glyph, without the Unicode bidirectional algorithm or
+egui 0.37 lays text out glyph by glyph, without the Unicode bidirectional algorithm or
 shaping. So:
 
 | Script | Today |

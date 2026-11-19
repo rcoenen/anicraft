@@ -15,7 +15,7 @@ use crate::a11y::{self, Named};
 use crate::app::App;
 use crate::theme::{T, Type, text, to_color32, with_type};
 use anicraft_engine::doc::{ElementKind, GradientStop, MAX_FOCAL, MAX_GRADIENT_STOPS, Paint, Rgba, Spread, ramp_at};
-use egui::{Id, Key, Rect, Response, Sense, Stroke, StrokeKind, WidgetType, pos2, vec2};
+use egui::{Id, Key, Rect, Response, Sense, Stroke, StrokeKind, Role, pos2, vec2};
 use serde_json::{Value, json};
 
 /// How far (screen points) a stop dragged off the bar must go to be removed.
@@ -128,7 +128,7 @@ fn paint_preview(p: &egui::Painter, r: Rect, paint: Option<&Paint>) {
 pub fn swatch(ui: &mut egui::Ui, paint: Option<&Paint>, bitmaps: &[(u64, String)]) -> (Response, Option<FillEdit>) {
     let size = ui.spacing().interact_size;
     let (rect, mut resp) = ui.allocate_exact_size(size, Sense::click());
-    resp.widget_info(|| egui::WidgetInfo::new(WidgetType::ColorButton));
+    resp.widget_info(|| egui::WidgetInfo::new(Role::ColorWell));
     let popup = resp.id.with("colour_popup");
     let open = egui::Popup::is_id_open(ui.ctx(), popup);
     if ui.is_rect_visible(rect) {
@@ -262,7 +262,7 @@ fn gradient_swatches(ui: &mut egui::Ui, paint: Option<&Paint>) -> Option<FillEdi
                 let edge = if on { Stroke::new(2.0, T.accent) } else if resp.hovered() { Stroke::new(1.5, T.selection) } else { Stroke::new(1.0, T.border) };
                 ui.painter().rect_stroke(r, 0.0, edge, StrokeKind::Outside);
                 let name = crate::swatches_panel::describe(&sw.paint, &sw.name);
-                a11y::control(ui, &resp, WidgetType::Button, &tr!("Gradient swatch: {name}", name = name.as_str()), Some(on));
+                a11y::control(ui, &resp, Role::Button, &tr!("Gradient swatch: {name}", name = name.as_str()), Some(on));
                 if resp.on_hover_text(name).clicked() {
                     out = Some(FillEdit::Set { label: tr_noop!("Fill"), live: false, params: crate::swatches_panel::fill_params(&sw.paint) });
                 }
@@ -368,7 +368,7 @@ fn stop_bar(ui: &mut egui::Ui, popup: Id, stops: &mut Vec<GradientStop>) -> Opti
     let can_remove = stops.len() > 2;
     let w = BAR_WIDTH;
     let (strip, resp) = ui.allocate_exact_size(vec2(w, 18.0), Sense::click());
-    a11y::control(ui, &resp, WidgetType::Button, tr!("Gradient: add a colour stop"), None);
+    a11y::control(ui, &resp, Role::Button, tr!("Gradient: add a colour stop"), None);
     let resp = resp.on_hover_text(tr!("Click to add a colour stop. Drag a stop to move it, or off the bar to remove it. With a stop focused, the arrow keys move it and Delete removes it."));
     let p = ui.painter();
     // A checkerboard under the ramp shows its opacity.
@@ -407,7 +407,7 @@ fn stop_bar(ui: &mut egui::Ui, popup: Id, stops: &mut Vec<GradientStop>) -> Opti
         let r = ui.interact(hit, popup.with(("fill_stop_marker", i)), Sense::click_and_drag());
         let at = format!("{:.0}", off * 100.0);
         let alpha = stops.get(i).map(|s| format!("{:.0}", s.color.sanitized().a * 100.0)).unwrap_or_else(|| "100".into());
-        a11y::control(ui, &r, WidgetType::Button, &tr!("Colour stop {stop} of {count} at {at}%, alpha {alpha}%", stop = i + 1, count = count, at = at, alpha = alpha), Some(i == sel));
+        a11y::control(ui, &r, Role::Button, &tr!("Colour stop {stop} of {count} at {at}%, alpha {alpha}%", stop = i + 1, count = count, at = at, alpha = alpha), Some(i == sel));
         if r.clicked() || r.drag_started() || r.gained_focus() {
             sel = i;
         }
@@ -559,7 +559,7 @@ mod tests {
     fn picker_once(paint: Option<&Paint>, bitmaps: &[(u64, String)]) -> Option<FillEdit> {
         let ctx = egui::Context::default();
         let mut edit = Some(FillEdit::None(false));
-        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| edit = fill_picker(ui, Id::new("test_fill"), paint, bitmaps));
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| edit = fill_picker(ui, Id::unique("test_fill"), paint, bitmaps));
         out.textures_delta.clear();
         edit
     }

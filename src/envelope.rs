@@ -13,7 +13,7 @@ use crate::theme::{T, Type, font, text, with_type};
 use anicraft_engine::doc::audio::{Peaks, Voice, VoiceKind};
 use anicraft_engine::doc::sound::{MAX_ENVELOPE_POINTS, MAX_ENVELOPE_SECONDS, clean_points, frame_start};
 use anicraft_engine::doc::{EnvelopePoint, FrameSound, LayerId, Sound, SoundEffect, SoundId};
-use egui::{Align2, Rect, Sense, Stroke, WidgetType, pos2, vec2};
+use egui::{Align2, Rect, Sense, Stroke, Role, pos2, vec2};
 use serde_json::json;
 use std::sync::Arc;
 
@@ -89,7 +89,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     let mut open = true;
     let title = tr!("Edit Envelope — {name}", name = t.sound.name);
     let shown = crate::windows::new(ctx, title.clone())
-        .id(egui::Id::new("envelope_editor"))
+        .id(egui::Id::unique("envelope_editor"))
         .open(&mut open)
         .collapsible(false)
         .resizable(true)
@@ -202,7 +202,7 @@ fn body(app: &mut App, ed: &mut EnvelopeEditor, ui: &mut egui::Ui, t: &Target) {
     let mut changed: Option<(&str, bool)> = None;
     for (c, lane) in lanes.iter().enumerate() {
         let name = if c == 0 { tr!("Left channel") } else { tr!("Right channel") };
-        let bg = ui.interact(*lane, ui.id().with(("env_lane", c)), Sense::click());
+        let bg = ui.interact(*lane, ui.scope_id().with(("env_lane", c)), Sense::click());
         crate::a11y::surface(ui, &bg, &tr!("{channel}: click to add a volume point", channel = name));
         p.rect_filled(*lane, crate::theme::SQUARE, T.field);
         p.line_segment([pos2(lane.left(), lane.center().y), pos2(lane.right(), lane.center().y)], Stroke::new(1.0, T.separator));
@@ -246,9 +246,9 @@ fn body(app: &mut App, ed: &mut EnvelopeEditor, ui: &mut egui::Ui, t: &Target) {
                 continue;
             }
             let hit = Rect::from_center_size(centre, vec2(2.0 * REACH, 2.0 * REACH));
-            let r = ui.interact(hit, ui.id().with(("env_point", c, i)), Sense::click_and_drag());
+            let r = ui.interact(hit, ui.scope_id().with(("env_point", c, i)), Sense::click_and_drag());
             let secs = time_label(q.at, ed.frames, fps);
-            crate::a11y::control(ui, &r, WidgetType::Slider, &tr!("Point {index} of {count}, {channel}: {level} % at {time}", index = i + 1, count = pts.len(), channel = name, level = format!("{:.0}", level(&q) * 100.0), time = secs), None);
+            crate::a11y::control(ui, &r, Role::Slider, &tr!("Point {index} of {count}, {channel}: {level} % at {time}", index = i + 1, count = pts.len(), channel = name, level = format!("{:.0}", level(&q) * 100.0), time = secs), None);
             let hot = r.hovered() || r.dragged() || ed.selected == Some(i);
             let h = Rect::from_center_size(centre, vec2(2.0 * HANDLE, 2.0 * HANDLE));
             p.rect_filled(h, crate::theme::SQUARE, if hot { T.accent } else { T.panel });

@@ -321,6 +321,8 @@ pub struct Shot {
     pub path: PathBuf,
     pub frames: u32,
     pub requested: bool,
+    /// Where the renderer hands the picture back, once it has read the pixels.
+    pub image: Option<std::sync::mpsc::Receiver<std::sync::Arc<egui::ColorImage>>>,
     /// Scaled down to this width when written (`--shot-width`).
     pub width: Option<u32>,
 }
@@ -781,7 +783,7 @@ impl App {
             show_about: false,
             show_files: false,
             show_licenses: false,
-            shot: shot.map(|path| Shot { path, frames: 0, requested: false, width: None }),
+            shot: shot.map(|path| Shot { path, frames: 0, requested: false, image: None, width: None }),
             cursor_stage: None,
             tl_scroll: 0.0,
             tl_cell_w: timeline::CELL_DEFAULT,
@@ -4139,12 +4141,7 @@ impl App {
         let Some(shot) = &mut self.shot else { return };
         shot.frames += 1;
         ctx.request_repaint();
-        let image = ctx.input(|i| {
-            i.raw.events.iter().find_map(|e| match e {
-                egui::Event::Screenshot { image, .. } => Some(image.clone()),
-                _ => None,
-            })
-        });
+        let image = shot.image.as_ref().and_then(|r| r.try_recv().ok());
         if let Some(img) = image {
             let img = match shot.width {
                 Some(w) => shrink(&img, w as usize),
@@ -4159,7 +4156,14 @@ impl App {
         }
         if shot.frames >= SHOT_FRAMES && !shot.requested {
             shot.requested = true;
-            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
+            let (send, receive) = std::sync::mpsc::channel();
+            shot.image = Some(receive);
+            let wake = ctx.clone();
+            ctx.request_screenshot(move |img| {
+                // The app may have closed meanwhile: then nobody waits for the picture.
+                let _ = send.send(img);
+                wake.request_repaint();
+            });
         }
         if shot.frames > SHOT_FRAMES + 600 {
             eprintln!("screenshot: the renderer never delivered a frame");
@@ -4181,7 +4185,7 @@ impl App {
         let mut submit = false;
         let mut cancel = false;
         let title = crate::i18n::t(p.title);
-        crate::windows::new(ctx, title).id(egui::Id::new(("prompt", p.title))).collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, -80.0]).show(ctx, |ui| {
+        crate::windows::new(ctx, title).id(egui::Id::unique(("prompt", p.title))).collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, -80.0]).show(ctx, |ui| {
             ui.set_min_width(360.0);
             let r = ui.add(egui::TextEdit::singleline(&mut p.text).desired_width(f32::INFINITY)).named(title);
             if p.focus {
@@ -4218,7 +4222,7 @@ impl App {
 
     fn about_window(&mut self, ctx: &egui::Context) {
         let mut open = self.show_about;
-        let shown = crate::windows::new(ctx, tr!("About AniCraft")).id(egui::Id::new("about_window")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
+        let shown = crate::windows::new(ctx, tr!("About AniCraft")).id(egui::Id::unique("about_window")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
             ui.add(egui::Image::new((app_mark(ctx).id(), egui::vec2(64.0, 64.0))));
             ui.heading("AniCraft");
             ui.label(tr!("Version {version} · {stage}", version = env!("CARGO_PKG_VERSION"), stage = crate::i18n::t(RELEASE_STAGE)));
@@ -4250,7 +4254,7 @@ impl App {
             (tr!("Screenshots"), root.join("shots")),
         ];
         let mut opened: Option<Result<(), String>> = None;
-        let shown = crate::windows::new(ctx, tr!("Project Files")).id(egui::Id::new("files_window")).open(&mut open).collapsible(false).resizable(false).default_width(620.0).show(ctx, |ui| {
+        let shown = crate::windows::new(ctx, tr!("Project Files")).id(egui::Id::unique("files_window")).open(&mut open).collapsible(false).resizable(false).default_width(620.0).show(ctx, |ui| {
             ui.label(theme::text(theme::Type::Label, tr!("Where AniCraft's documents and files are on this computer")));
             ui.add_space(4.0);
             egui::Grid::new("files").num_columns(3).spacing([10.0, 6.0]).striped(true).show(ui, |ui| {
@@ -4284,7 +4288,7 @@ impl App {
 /// first use and kept in the context. 128 px stays sharp at 64 pt on a 2× display.
 pub(crate) fn app_mark(ctx: &egui::Context) -> egui::TextureHandle {
     const PNG: &[u8] = include_bytes!("../assets/app-icon/hicolor/128x128/apps/ai.storyteller.anicraft.png");
-    let id = egui::Id::new("anicraft-app-mark");
+    let id = egui::Id::unique("anicraft-app-mark");
     if let Some(tex) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
         return tex;
     }
@@ -4407,7 +4411,7 @@ impl eframe::App for App {
             _ => {
                 let over = at - egui::vec2(0.0, 120.0);
                 raw.events.push(egui::Event::PointerMoved(over));
-                raw.events.push(egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: egui::vec2(0.0, -2000.0), modifiers: Modifiers::NONE, phase: egui::TouchPhase::Move });
+                raw.events.push(egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: egui::vec2(0.0, -2000.0), modifiers: Modifiers::NONE, phase: egui::TouchPhase::Move, source: egui::MouseWheelSource::Wheel });
                 self.shot_click.set(None);
                 self.shot_step = 0;
             }

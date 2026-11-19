@@ -117,7 +117,7 @@ pub fn offer(app: &mut App, ctx: &egui::Context) {
         return;
     }
     let mut act: Option<bool> = None;
-    egui::Area::new(egui::Id::new("desktop_offer")).order(egui::Order::Foreground).anchor(egui::Align2::RIGHT_BOTTOM, [-16.0, -40.0]).show(ctx, |ui| {
+    egui::Area::new(egui::Id::unique("desktop_offer")).order(egui::Order::Foreground).anchor(egui::Align2::RIGHT_BOTTOM, [-16.0, -40.0]).show(ctx, |ui| {
         egui::Frame::popup(ui.style()).fill(T.panel_alt).inner_margin(egui::Margin::same(12)).show(ui, |ui| {
             ui.set_width(340.0);
             ui.label(text(Type::Label, tr!("Add AniCraft to your applications menu?")).strong());
@@ -316,7 +316,7 @@ mod tests {
         let data = app.desktop.as_ref().map(|d| d.data_home.clone()).unwrap();
         assert!(app.desktop.as_ref().is_some_and(|d| d.offer));
         frames(&ctx, &mut app, 3, vec![]);
-        let card = ctx.memory(|m| m.area_rect(egui::Id::new("desktop_offer"))).expect("the card is drawn");
+        let card = ctx.memory(|m| m.area_rect(egui::Id::unique("desktop_offer"))).expect("the card is drawn");
         // Add to Menu: the first button on the card's bottom row.
         frames(&ctx, &mut app, 2, click(egui::pos2(card.min.x + 40.0, card.max.y - 24.0)));
         assert!(app.prefs.desktop_offered, "answered");
@@ -334,7 +334,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d.data_home);
         start_with(&mut app, d, false);
         frames(&ctx, &mut app, 3, vec![]);
-        let card = ctx.memory(|m| m.area_rect(egui::Id::new("desktop_offer"))).expect("the card is drawn");
+        let card = ctx.memory(|m| m.area_rect(egui::Id::unique("desktop_offer"))).expect("the card is drawn");
         frames(&ctx, &mut app, 2, click(egui::pos2(card.min.x + 170.0, card.max.y - 24.0)));
         assert!(app.prefs.desktop_offered);
         assert_eq!(app.desktop.as_ref().map(|d| (d.offer, d.entry.clone())), Some((false, Entry::None)));

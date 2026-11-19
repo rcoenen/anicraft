@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+* **Closing the window no longer crashes on macOS.** Quitting, closing the window and the end of
+  a `--screenshot` run could stop with `NSRangeException` (`Cannot remove an observer
+  <_NSTouchBarFinderObservation …> for the key path "nextResponder"`) and exit code 134. The
+  accessibility layer put the window's view back to its own class on close, after macOS had
+  given it another class to watch it for the Touch Bar. eframe and egui go to 0.37, which
+  brings AccessKit 0.27.2 with the fix (AccessKit/accesskit#835). Single-line text fields are now
+  as tall as the buttons beside them, as egui 0.37 draws them.
+
 * **Themes of your own** (#340, ADR 0117, M8): a theme is a small JSON file that names colours
   for the interface's roles, kept in `themes` in the settings folder (`data/themes` in a
   portable copy).

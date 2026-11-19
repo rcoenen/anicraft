@@ -213,15 +213,15 @@ pub fn buttons(app: &mut App, ui: &mut egui::Ui) {
         toggle_edit_multiple(app);
     }
     let (rect, resp) = ui.allocate_exact_size(vec2(16.0, crate::theme::TARGET), Sense::click());
-    let hot = resp.hovered() || egui::Popup::is_id_open(ui.ctx(), egui::Id::new(MENU_ID));
+    let hot = resp.hovered() || egui::Popup::is_id_open(ui.ctx(), egui::Id::unique(MENU_ID));
     ui.painter().rect_filled(rect, T.rc(), if hot { T.header } else { Color32::TRANSPARENT });
     crate::icons::paint(ui.painter(), Rect::from_center_size(rect.center(), vec2(12.0, 12.0)), crate::icons::Icon::ChevronDown, if hot { T.icon_hot } else { T.icon });
-    crate::a11y::control(ui, &resp, egui::WidgetType::Button, tr!("Onion skin options"), None);
+    crate::a11y::control(ui, &resp, egui::Role::Button, tr!("Onion skin options"), None);
     let resp = resp.on_hover_text(tr!("Onion skin options: markers, outlines, colours"));
     if std::mem::take(&mut app.onion_ui.open_menu) {
-        egui::Popup::open_id(ui.ctx(), egui::Id::new(MENU_ID));
+        egui::Popup::open_id(ui.ctx(), egui::Id::unique(MENU_ID));
     }
-    let shown = egui::Popup::menu(&resp).id(egui::Id::new(MENU_ID)).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
+    let shown = egui::Popup::menu(&resp).id(egui::Id::unique(MENU_ID)).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
         ui.set_min_width(230.0);
         menu(app, ui);
     });
@@ -273,7 +273,7 @@ pub fn ruler(app: &mut App, ui: &mut egui::Ui, ruler: Rect, cell_w: f32, x_of: i
             painter.circle_filled(pos2(x + serif * 0.6, ruler.center().y), 2.0, c);
         }
         let hit = Rect::from_center_size(pos2(x, ruler.center().y), vec2(10.0, ruler.height()));
-        let id = ui.id().with(("onion_marker", start));
+        let id = ui.scope_id().with(("onion_marker", start));
         let resp = ui.interact(hit, id, crate::a11y::pointer_only());
         let at = if start { first } else { last };
         let name = if start { tr!("Onion start marker") } else { tr!("Onion end marker") };

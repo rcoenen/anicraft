@@ -14,7 +14,7 @@ use anicraft_engine::StateId;
 use anicraft_engine::doc::{LayerKind, SymbolKind};
 use anicraft_engine::explorer::{self, NodeKind, Options, Row, Show, Tree};
 use anicraft_engine::find::Scope;
-use egui::{Key, Rect, Sense, Stroke, StrokeKind, WidgetType, pos2, vec2};
+use egui::{Key, Rect, Sense, Stroke, StrokeKind, Role, pos2, vec2};
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -173,7 +173,7 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
     // The search, and the Show menu: kinds of rows, which scenes, the Library's symbols.
     ui.horizontal(|ui| {
         // The search takes what the Show button (as wide as its translation) leaves.
-        let menu_w_id = ui.id().with("explorer_show_w");
+        let menu_w_id = ui.scope_id().with("explorer_show_w");
         let menu_w = ui.data(|d| d.get_temp::<f32>(menu_w_id)).unwrap_or(72.0) + ui.spacing().item_spacing.x;
         let search = ui.add(egui::TextEdit::singleline(&mut app.explorer.filter).hint_text(tr!("Search")).desired_width((ui.available_width() - menu_w).max(crate::theme::MIN_FIELD)));
         search.set_name(tr!("Search the Movie Explorer"));
@@ -259,7 +259,7 @@ fn list(app: &mut App, ui: &mut egui::Ui, t: &Tree) {
                 (true, false) => tr!("{kind}: {row}, closed", kind = kind, row = label),
                 _ => tr!("{kind}: {row}", kind = kind, row = label),
             };
-            a11y::control(ui, &resp, WidgetType::SelectableLabel, &name, Some(on));
+            a11y::control(ui, &resp, Role::Button, &name, Some(on));
             let resp = resp.on_hover_text(tr!("{row}\nDouble-click to go there", row = name));
             if resp.clicked() {
                 let on_chevron = ui.input(|inp| inp.pointer.interact_pos()).is_some_and(|q| q.x < icon.left());

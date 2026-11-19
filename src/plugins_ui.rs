@@ -208,7 +208,7 @@ fn dialog(app: &mut App, ctx: &egui::Context) {
     let m = p.manifest();
     let mut changed = false;
     let (mut ok, mut cancel) = (false, false);
-    let id = egui::Id::new("plugin_dialog");
+    let id = egui::Id::unique("plugin_dialog");
     // Beside the stage, with no dimming, so the preview stays in view.
     let area = egui::Modal::default_area(id).anchor(egui::Align2::RIGHT_TOP, [-10.0, 96.0]);
     egui::Modal::new(id).area(area).backdrop_color(egui::Color32::TRANSPARENT).show(ctx, |ui| {
@@ -288,7 +288,7 @@ fn manager(app: &mut App, ctx: &egui::Context) {
     let mut open = app.show_plugins;
     let mut action: Option<(&'static str, String)> = None;
     let title = tr!("Plug-ins");
-    let shown = crate::windows::new(ctx, title).id(egui::Id::new("plugins_window")).open(&mut open).collapsible(false).resizable(false).default_width(560.0).show(ctx, |ui| {
+    let shown = crate::windows::new(ctx, title).id(egui::Id::unique("plugins_window")).open(&mut open).collapsible(false).resizable(false).default_width(560.0).show(ctx, |ui| {
         let list: Vec<Arc<Plugin>> = app.s.plugins.list().cloned().collect();
         if list.is_empty() {
             ui.label(text(Type::Label, tr!("No plug-ins installed yet. Plug-ins are WebAssembly (.wasm) files that add commands (generators, selection effects), export formats and eases.")));

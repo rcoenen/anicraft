@@ -60,14 +60,14 @@ i_overlay = { version = "9.2", default-features = false }
 # wgpu is the primary renderer; glow (OpenGL) is the fallback for GPUs/VMs where wgpu fails.
 # Default features off: we skip `links` (opening web links pulls in url/idna/ICU Unicode
 # tables we don't use) and the web-only screen-reader shim. Same set as PhotoCraft, plus glow.
-eframe = { version = "0.36", default-features = false, features = ["accesskit", "default_fonts", "wgpu", "glow", "wayland", "x11"] }
+eframe = { version = "0.37", default-features = false, features = ["accesskit", "default_fonts", "wgpu", "glow", "wayland", "x11"] }
 # Native file dialogs: Windows common dialogs, macOS NSOpenPanel, Linux XDG desktop portal.
 rfd = "0.17"
 # Lists and loads the OS's installed fonts for Preferences › Appearance (MIT).
 # Without the `fontconfig` feature, Linux scans the standard font folders directly
 # (/usr/share/fonts, /usr/local/share/fonts, ~/.local/share/fonts, ~/.fonts).
 fontdb = { version = "0.23", default-features = false, features = ["std", "fs", "memmap"] }
-egui = "0.36"
+egui = "0.37"
 # `Instant` and `SystemTime` that work in the browser too (std's panic on wasm32-unknown-unknown);
 # on other targets a re-export of std::time (MIT OR Apache-2.0; already in the tree via winit).
 web-time = "1"
@@ -157,7 +157,7 @@ winreg = "0.55"
 # smaller. The browser glue is wasm-bindgen's (MIT OR Apache-2.0), already under eframe's web
 # backend.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-eframe = { version = "0.36", default-features = false, features = ["accesskit", "default_fonts", "glow"] }
+eframe = { version = "0.37", default-features = false, features = ["accesskit", "default_fonts", "glow"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"

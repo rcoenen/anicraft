@@ -68,7 +68,7 @@ struct Geometry {
 
 impl Geometry {
     fn of(ctx: &egui::Context) -> Geometry {
-        let (inner, lane, last, lo, hi) = ctx.data(|d| d.get_temp::<(Rect, Rect, f32, f32, f32)>(egui::Id::new("me_geometry"))).expect("the Motion Editor drew");
+        let (inner, lane, last, lo, hi) = ctx.data(|d| d.get_temp::<(Rect, Rect, f32, f32, f32)>(egui::Id::unique("me_geometry"))).expect("the Motion Editor drew");
         Geometry { inner, lane, last, lo, hi }
     }
     fn x(&self, f: u32) -> f32 {
@@ -198,7 +198,7 @@ fn a_motion_span_drags_whole_and_alt_drag_copies_it() {
     settle(&ctx, &mut app);
     let len = spans(&app).first().map(|s| s.1).expect("span");
     // The active row's cells, as the timeline drew them.
-    let row = ctx.data(|d| d.get_temp::<(Rect, f32, f32, f32)>(egui::Id::new("tl_geometry")));
+    let row = ctx.data(|d| d.get_temp::<(Rect, f32, f32, f32)>(egui::Id::unique("tl_geometry")));
     let Some((cells, x0, cell_w, scroll)) = row else { panic!("the timeline drew") };
     let x = |f: u32| x0 + (f as f32 - scroll) * cell_w + cell_w * 0.5;
     let y = cells.center().y;

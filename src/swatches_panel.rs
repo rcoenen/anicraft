@@ -14,7 +14,7 @@ use crate::app::App;
 use crate::icons::{self, Icon};
 use crate::theme::{T, TARGET, Type, text, to_color32};
 use anicraft_engine::doc::{ElementKind, Paint, Rgba, SwatchPaint, ramp_at};
-use egui::{Id, Key, Painter, Rect, Response, Sense, Stroke, StrokeKind, WidgetType, pos2, vec2};
+use egui::{Id, Key, Painter, Rect, Response, Sense, Stroke, StrokeKind, Role, pos2, vec2};
 use serde_json::json;
 
 /// One swatch, in points, and the gap between swatches.
@@ -160,7 +160,7 @@ fn bar_button(ui: &mut egui::Ui, tip: &str, icon: Icon, enabled: bool) -> Respon
         T.icon
     };
     icons::paint(ui.painter(), Rect::from_center_size(rect.center(), vec2(16.0, 16.0)), icon, colour);
-    a11y::control(ui, &resp, WidgetType::Button, tip, None);
+    a11y::control(ui, &resp, Role::Button, tip, None);
     resp.on_hover_text(tip)
 }
 
@@ -195,7 +195,7 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
         }
         ui.add_space(6.0);
         let more = bar_button(ui, tr!("Swatch options: import, export, defaults"), Icon::Ellipsis, true);
-        egui::Popup::menu(&more).id(Id::new("anicraft.swatches.menu")).show(|ui| menu(app, ui));
+        egui::Popup::menu(&more).id(Id::unique("anicraft.swatches.menu")).show(|ui| menu(app, ui));
     });
     let caption = if n == 0 { tr!("No swatches. Add the current colour with +, or load the defaults from the menu.") } else { tr!("Click to apply; drag to move; right-click for more.") };
     ui.label(text(Type::Caption, caption));
@@ -248,7 +248,7 @@ fn grid(app: &mut App, ui: &mut egui::Ui) {
     let size = vec2(cols as f32 * (CELL + GAP) - GAP, rows as f32 * (CELL + GAP) - GAP);
     let (area, _) = ui.allocate_exact_size(size, Sense::hover());
     let cell_rect = |i: usize| Rect::from_min_size(pos2(area.left() + (i % cols) as f32 * (CELL + GAP), area.top() + (i / cols) as f32 * (CELL + GAP)), vec2(CELL, CELL));
-    let drag_id = Id::new("anicraft.swatches.drag");
+    let drag_id = Id::unique("anicraft.swatches.drag");
     let mut dragging: Option<usize> = ui.data(|d| d.get_temp(drag_id));
     let pointer = ui.ctx().pointer_interact_pos();
     // Where a dragged swatch would land: the cell under the pointer (the last one past the end).
@@ -260,10 +260,10 @@ fn grid(app: &mut App, ui: &mut egui::Ui) {
     let mut act: Option<Act> = None;
     for (i, sw) in swatches.iter().enumerate() {
         let r = cell_rect(i);
-        let resp = ui.interact(r, Id::new(("anicraft.swatch", i)), Sense::click_and_drag());
+        let resp = ui.interact(r, Id::unique(("anicraft.swatch", i)), Sense::click_and_drag());
         let name = describe(&sw.paint, &sw.name);
         let selected = app.swatch_sel == Some(i);
-        a11y::control(ui, &resp, WidgetType::Button, &tr!("Swatch {n}: {name}", n = i + 1, name = name.as_str()), Some(selected));
+        a11y::control(ui, &resp, Role::Button, &tr!("Swatch {n}: {name}", n = i + 1, name = name.as_str()), Some(selected));
         let p = ui.painter();
         preview(p, r, &sw.paint);
         let edge = if selected {
@@ -377,7 +377,7 @@ fn grid(app: &mut App, ui: &mut egui::Ui) {
 
 /// The swatch's name, typed in its right-click menu (Enter or leaving the field renames it).
 fn name_field(app: &mut App, ui: &mut egui::Ui, i: usize, current: &str) {
-    let buf_id = Id::new(("anicraft.swatch.name", i));
+    let buf_id = Id::unique(("anicraft.swatch.name", i));
     let mut s: String = ui.data(|d| d.get_temp(buf_id)).unwrap_or_else(|| current.to_string());
     ui.horizontal(|ui| {
         ui.label(tr!("Name"));
@@ -396,12 +396,12 @@ fn name_field(app: &mut App, ui: &mut egui::Ui, i: usize, current: &str) {
 /// The document's swatches as the colour pickers show them (ADR 0078): the solid colours, and
 /// the gradients for the fill picker. Put in the context each frame by the app.
 pub fn publish_to_pickers(ctx: &egui::Context, app: &App) {
-    ctx.data_mut(|d| d.insert_temp(Id::new("anicraft.colour.document"), app.s.doc.swatches.clone()));
+    ctx.data_mut(|d| d.insert_temp(Id::unique("anicraft.colour.document"), app.s.doc.swatches.clone()));
 }
 
 /// The document's swatches, for a picker.
 pub fn for_pickers(ctx: &egui::Context) -> std::sync::Arc<Vec<anicraft_engine::doc::Swatch>> {
-    ctx.data(|d| d.get_temp(Id::new("anicraft.colour.document"))).unwrap_or_default()
+    ctx.data(|d| d.get_temp(Id::unique("anicraft.colour.document"))).unwrap_or_default()
 }
 
 /// The fill a gradient swatch makes, as `paint.set_fill` params.

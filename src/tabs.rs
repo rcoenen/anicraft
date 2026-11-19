@@ -19,7 +19,7 @@ use crate::platform;
 use crate::theme::{self, T, Type, font};
 use anicraft_engine::Session;
 use anicraft_engine::doc::{Document, ElementId, LayerId};
-use egui::{Id, Rect, Sense, Stroke, StrokeKind, WidgetType, pos2, vec2};
+use egui::{Id, Rect, Sense, Stroke, StrokeKind, Role, pos2, vec2};
 use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -721,16 +721,16 @@ pub fn bar(app: &mut App, ui: &mut egui::Ui) {
             if shown.width() <= 0.0 {
                 continue;
             }
-            let resp = ui.interact(shown, Id::new(("document_tab", t.id)), Sense::click_and_drag());
+            let resp = ui.interact(shown, Id::unique(("document_tab", t.id)), Sense::click_and_drag());
             let said = spoken(t);
-            resp.widget_info(|| egui::WidgetInfo::selected(WidgetType::SelectableLabel, true, t.active, &said));
+            resp.widget_info(|| egui::WidgetInfo::selected(Role::Button, true, t.active, &said));
             ui.ctx().accesskit_node_builder(resp.id, |node| {
                 node.set_role(egui::accesskit::Role::Tab);
                 node.set_selected(t.active);
             });
             let close_r = Rect::from_center_size(pos2(r.right() - PAD * 0.5 - CLOSE_W * 0.5, r.center().y), vec2(CLOSE_W - 4.0, CLOSE_W - 4.0));
-            let close = ui.interact(close_r.intersect(full), Id::new(("document_tab_close", t.id)), Sense::click());
-            a11y::control(ui, &close, WidgetType::Button, &tr!("Close {name}", name = t.name), None);
+            let close = ui.interact(close_r.intersect(full), Id::unique(("document_tab_close", t.id)), Sense::click());
+            a11y::control(ui, &close, Role::Button, &tr!("Close {name}", name = t.name), None);
             // The tab: the shown one joins the edit bar below it.
             let p = ui.painter();
             if t.active {

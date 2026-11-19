@@ -176,7 +176,7 @@ fn save_window(app: &mut App, ctx: &egui::Context) {
     let mut save = false;
     let mut cancel = false;
     let title = tr!("Save As Command");
-    let shown = crate::windows::new(ctx, title).id(egui::Id::new("save_as_command")).open(&mut open).collapsible(false).resizable(false).pivot(egui::Align2::CENTER_CENTER).default_pos(ctx.content_rect().center()).show(ctx, |ui| {
+    let shown = crate::windows::new(ctx, title).id(egui::Id::unique("save_as_command")).open(&mut open).collapsible(false).resizable(false).pivot(egui::Align2::CENTER_CENTER).default_pos(ctx.content_rect().center()).show(ctx, |ui| {
         ui.set_min_width(380.0);
         ui.horizontal(|ui| {
             ui.label(text(Type::Label, tr!("Name")));
@@ -300,7 +300,7 @@ fn manage_window(app: &mut App, ctx: &egui::Context) {
     let mut open = true;
     let mut acts: Vec<Act> = Vec::new();
     let title = tr!("Manage Saved Commands");
-    let shown = crate::windows::new(ctx, title).id(egui::Id::new("manage_saved_commands")).open(&mut open).collapsible(false).resizable(false).default_width(760.0).show(ctx, |ui| {
+    let shown = crate::windows::new(ctx, title).id(egui::Id::unique("manage_saved_commands")).open(&mut open).collapsible(false).resizable(false).default_width(760.0).show(ctx, |ui| {
         ui.set_min_width(720.0);
         let list = app.macros.list.clone();
         if list.is_empty() {

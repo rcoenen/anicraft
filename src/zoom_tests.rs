@@ -59,8 +59,8 @@ fn clear_field(ctx: &egui::Context, app: &mut App) {
 }
 
 fn zoom_rects(ctx: &egui::Context) -> (Rect, Rect) {
-    let field = ctx.data(|d| d.get_temp::<Rect>(egui::Id::new("zoom_field"))).expect("the zoom field drew");
-    let arrow = ctx.data(|d| d.get_temp::<Rect>(egui::Id::new("zoom_arrow"))).expect("the zoom arrow drew");
+    let field = ctx.data(|d| d.get_temp::<Rect>(egui::Id::unique("zoom_field"))).expect("the zoom field drew");
+    let arrow = ctx.data(|d| d.get_temp::<Rect>(egui::Id::unique("zoom_arrow"))).expect("the zoom arrow drew");
     (field, arrow)
 }
 

@@ -12,7 +12,7 @@ use crate::app::App;
 use crate::dock::{Float, Layout, Panel};
 use crate::dock_ui::{Act, Drag, Drawn, MENU_W, Over, Where, apply, end_drag, menu_button, panel_body, region, tab_row};
 use crate::theme::T;
-use egui::{Id, Rect, Sense, WidgetType, pos2, vec2};
+use egui::{Id, Rect, Sense, Role, pos2, vec2};
 
 /// Draws every floating window.
 pub fn floating(app: &mut App, ctx: &egui::Context) {
@@ -42,7 +42,7 @@ fn strip(app: &mut App, ui: &mut egui::Ui, f: &Float, layout: &Layout, anchor: b
     ui.horizontal(|ui| {
         // The grip: dragged, the whole window; clicked, the shown panel's menu.
         let (g, resp) = ui.allocate_exact_size(vec2(14.0, 24.0), Sense::click_and_drag());
-        a11y::control(ui, &resp, WidgetType::Button, tr!("Window grip: drag to dock this window"), None);
+        a11y::control(ui, &resp, Role::Button, tr!("Window grip: drag to dock this window"), None);
         a11y::focus_ring(ui, &resp);
         let colour = if resp.hovered() || resp.dragged() { T.icon_hot } else { T.text_faint };
         for i in -1..=1 {
@@ -108,7 +108,7 @@ fn float_body(app: &mut App, ui: &mut egui::Ui, f: &Float, layout: &Layout, anch
 /// Floating inside the editor: an egui window.
 fn inside(app: &mut App, ctx: &egui::Context, f: &Float, layout: &Layout, acts: &mut Vec<Act>) {
     let Some(p) = f.shown() else { return };
-    let id = Id::new(("dock_float", f.id));
+    let id = Id::unique(("dock_float", f.id));
     let title = crate::i18n::t(p.label());
     let mut open = true;
     let size = vec2(f.size[0], f.size[1]);

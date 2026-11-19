@@ -62,7 +62,7 @@ fn key_button(app: &mut App, ui: &mut egui::Ui, layer: &Layer, frame: u32) {
     let fill = if here { color } else { egui::Color32::TRANSPARENT };
     ui.painter().add(egui::Shape::convex_polygon(pts, fill, Stroke::new(1.5, color)));
     let tip = if here { tr!("Remove the depth key on this frame") } else { tr!("Key the depth on this frame: the depth then tweens between keys") };
-    a11y::control(ui, &resp, egui::WidgetType::Button, tr!("Depth key"), Some(here));
+    a11y::control(ui, &resp, egui::Role::Button, tr!("Depth key"), Some(here));
     if resp.on_hover_text(tip).clicked() {
         if here {
             app.run("layer.remove_depth_key", json!({"layer": layer.id.0, "frame": frame}));
@@ -142,7 +142,7 @@ fn layer_row(app: &mut App, ui: &mut egui::Ui, layer: &Layer, frame: u32) {
         let handle = egui::Rect::from_center_size(pos2(hx, y), vec2(8.0, track.height() * 0.8));
         let fill = if layer.attached { T.text_faint } else { to_color32(layer.color) };
         p.rect(handle, 2.0, fill, Stroke::new(if hot { 1.5 } else { 1.0 }, if hot { T.icon_hot } else { T.border }), StrokeKind::Inside);
-        a11y::control(ui, &resp, egui::WidgetType::Slider, &label, None);
+        a11y::control(ui, &resp, egui::Role::Slider, &label, None);
         if (resp.dragged() || resp.clicked())
             && let Some(at) = resp.interact_pointer_pos()
         {

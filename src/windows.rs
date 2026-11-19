@@ -5,7 +5,7 @@
 
 /// Where the area below the menu bar is kept for this frame.
 fn key() -> egui::Id {
-    egui::Id::new("anicraft_work_area")
+    egui::Id::unique("anicraft_work_area")
 }
 
 /// Records the work area: the window's content below the menu bar (`bar_bottom`).
@@ -39,7 +39,7 @@ mod tests {
         let mut out = ctx.run_ui(input, |ui| {
             let ctx = ui.ctx().clone();
             set_work_area(&ctx, 24.0);
-            if let Some(r) = new(&ctx, "Custom Ease").id(egui::Id::new("t")).current_pos(at).show(&ctx, |ui| {
+            if let Some(r) = new(&ctx, "Custom Ease").id(egui::Id::unique("t")).current_pos(at).show(&ctx, |ui| {
                 ui.label("graph");
             }) {
                 shown = r.response.rect;

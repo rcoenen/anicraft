@@ -457,7 +457,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             && let Some(p) = pointer
         {
             let centre = sel_rect.map_or(canvas.center(), |r| r.center());
-            rotate_cursor(&ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("stage_cursor"))), p, p - centre);
+            rotate_cursor(&ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("stage_cursor"))), p, p - centre);
         }
     }
     if let Some(picker) = picker {
@@ -4244,7 +4244,7 @@ pub fn commit_text(app: &mut App) {
 /// its own colour, size and style (ADR 0085). Esc or a click elsewhere finishes (a click in
 /// Properties' text styles keeps it open); Enter starts a new line.
 fn text_editor(app: &mut App, ui: &mut egui::Ui, stage_origin: Pos2, zoom: f32) {
-    let focused_id = egui::Id::new("stage_text_edit_field");
+    let focused_id = egui::Id::unique("stage_text_edit_field");
     let had_focus = ui.ctx().memory(|m| m.has_focus(focused_id));
     crate::rich_edit::watch_clipboard(app, ui.ctx(), had_focus);
     let paper = crate::theme::stage_text_colour(anicraft_engine::doc::Rgba { a: 1.0, ..app.s.doc.stage.background });
@@ -4260,7 +4260,7 @@ fn text_editor(app: &mut App, ui: &mut egui::Ui, stage_origin: Pos2, zoom: f32) 
     let width = 260.0f32.max(size * 8.0).max(block_w.unwrap_or(0.0) * zoom + 8.0).min(4000.0);
     let mut done = false;
     let (runs, last) = (te.runs.clone(), te.last.clone());
-    egui::Area::new(egui::Id::new("stage_text_edit")).fixed_pos(at).order(egui::Order::Foreground).show(ui.ctx(), |ui| {
+    egui::Area::new(egui::Id::unique("stage_text_edit")).fixed_pos(at).order(egui::Order::Foreground).show(ui.ctx(), |ui| {
         egui::Frame::new().fill(paper).stroke(Stroke::new(1.0, T.selection)).inner_margin(4.0).show(ui, |ui| {
             let mut layouter = |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
                 let job = crate::rich_edit::layout_job(&runs, &last, buf.as_str(), zoom, wrap);

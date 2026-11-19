@@ -448,7 +448,7 @@ fn preview_point(app: &App, at: PreviewAt) -> Option<Pos2> {
 
 /// The drop highlight: what lands where, drawn over everything.
 fn highlight(app: &App, ctx: &egui::Context, files: &[PathBuf], p: Option<Pos2>) {
-    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("file_drop")));
+    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("file_drop")));
     let screen = ctx.content_rect().shrink(3.0);
     // Only the names are known while a browser drags (and sometimes not even those).
     let known: Vec<&PathBuf> = files.iter().filter(|f| !f.as_os_str().is_empty()).collect();

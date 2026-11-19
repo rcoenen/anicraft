@@ -45,7 +45,7 @@ const MAX_EDGE: f32 = 2048.0;
 
 /// The movie surface's id: while it has the focus, keys go to the movie.
 pub fn surface_id() -> egui::Id {
-    egui::Id::new("test_movie_surface")
+    egui::Id::unique("test_movie_surface")
 }
 
 /// Whether the movie has the keyboard.
@@ -389,7 +389,7 @@ fn inside(app: &mut App, ctx: &egui::Context, why: crate::platform::Inside) -> A
     let title = title(tm);
     let note = why.note().map(crate::i18n::t);
     let win = crate::windows::new(ctx, title.clone())
-        .id(egui::Id::new("test_movie"))
+        .id(egui::Id::unique("test_movie"))
         .open(&mut shown)
         .collapsible(false)
         .resizable(true)
@@ -863,7 +863,7 @@ mod tests {
         for _ in 0..2 {
             frame(&ctx, &mut app, vec![]);
         }
-        assert!(ctx.memory(|m| m.area_rect(egui::Id::new("test_movie")).is_some()), "the floating window");
+        assert!(ctx.memory(|m| m.area_rect(egui::Id::unique("test_movie")).is_some()), "the floating window");
         frame(&ctx, &mut app, vec![ctrl(egui::Key::W)]);
         assert!(app.test_movie.is_none());
     }

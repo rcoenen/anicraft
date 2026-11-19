@@ -14,7 +14,7 @@
 //! The test at the bottom runs the whole interface headless with AccessKit on and fails on any
 //! interactive node without a name or role.
 
-use egui::{Id, Rect, Response, Stroke, StrokeKind, WidgetInfo, WidgetType};
+use egui::{Id, Rect, Response, Stroke, StrokeKind, WidgetInfo, Role};
 
 /// Names a control for assistive technology, for controls whose text is a value or nothing.
 pub trait Named {
@@ -48,7 +48,7 @@ pub fn focus_ring(ui: &egui::Ui, resp: &Response) {
 /// assistive technology, and its focus ring.
 /// A control allocated with `Sense::hover()` because it can't act now (Align with nothing
 /// selected) reads as unavailable.
-pub fn control(ui: &egui::Ui, resp: &Response, typ: WidgetType, name: &str, on: Option<bool>) {
+pub fn control(ui: &egui::Ui, resp: &Response, typ: Role, name: &str, on: Option<bool>) {
     let enabled = resp.enabled() && (resp.sense.senses_click() || resp.sense.senses_drag());
     resp.widget_info(|| match on {
         Some(v) => WidgetInfo::selected(typ, enabled, v, name),
@@ -192,18 +192,18 @@ impl Region {
     }
 
     fn key(self) -> Id {
-        Id::new(("a11y_region", self))
+        Id::unique(("a11y_region", self))
     }
 }
 
 /// Sets this frame's Ctrl+F6 order (the dock's, ADR 0075).
 pub fn set_order(ctx: &egui::Context, order: Vec<Region>) {
-    ctx.data_mut(|d| d.insert_temp(Id::new("a11y_region_order"), order));
+    ctx.data_mut(|d| d.insert_temp(Id::unique("a11y_region_order"), order));
 }
 
 /// The Ctrl+F6 order: the stage, the panels as docked, the tools.
 pub fn order(ctx: &egui::Context) -> Vec<Region> {
-    ctx.data(|d| d.get_temp::<Vec<Region>>(Id::new("a11y_region_order"))).unwrap_or_else(|| vec![Region::Stage, Region::Tools])
+    ctx.data(|d| d.get_temp::<Vec<Region>>(Id::unique("a11y_region_order"))).unwrap_or_else(|| vec![Region::Stage, Region::Tools])
 }
 
 /// Where a panel is this frame and the widget that takes focus when Ctrl+F6 lands on it.
