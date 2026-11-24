@@ -382,6 +382,7 @@ pub const NOT_FILES: &[&str] = &[
     "find.goto",
     "layer.delete",
     "layer.move",
+    "layer.new_folder",
     "layer.set_opacity",
     "motion.info",
     "motion.set_path",

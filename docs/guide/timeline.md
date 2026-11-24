@@ -48,6 +48,25 @@ wheel.
 Clicking a layer's name makes it the active layer and selects its artwork, as you'd expect from
 Animate. Right-click a layer for a menu with nearly everything in this section.
 
+### Selecting several layers
+
+* **Ctrl**-click a layer's name to add it to the selected layers, or to take it out again.
+* **Shift**-click a name to select every layer from the active one to it. With the timeline
+  focused, **Shift+Up** and **Shift+Down** do the same one layer at a time.
+* Click a name without a key to go back to one layer.
+
+The selected layers are highlighted. Together they can be:
+
+* **moved**: drag any one of them by its name and they all go, landing together in the order
+  they had. Drop them on a folder to put them all inside;
+* **put in a new folder**: click the folder button under the list (or **Insert › Timeline › New
+  Folder**). The folder appears where the top one was, with the selected layers in it;
+* **deleted**: the delete button and **Modify › Timeline › Delete Layer** take them all, after
+  asking once if they hold artwork.
+
+Each of these is one undo step. The eye, the padlock and the other buttons on a row still act
+on that row alone, and the up and down buttons move the active layer.
+
 ### Show, lock and outline
 
 Each layer row has three toggles:
@@ -109,7 +128,8 @@ Layer Properties works on one layer at a time. Editing several layers at once is
 Folders keep big timelines tidy.
 
 1. Click the folder button under the layer list, or choose **Insert › Timeline › New Folder**.
-   The folder appears above the active layer.
+   The folder appears above the active layer. With
+   [several layers selected](#selecting-several-layers) they go straight into it.
 2. Drag a layer by its name onto the folder to put it inside, or between two layers of an open
    folder. Drag it above or below a layer outside the folder to take it out again. (With the up
    and down buttons: move a layer in under the folder, and off either end to take it out.)
@@ -202,10 +222,11 @@ As in Animate, the keys keep you moving along the timeline:
 * **F6** or **F7** on a frame that is already a keyframe adds the new keyframe on the *next*
   frame and moves there, so you can draw, press **F6**, draw again, and so on. On any other
   frame they key the frame you're on.
-* With no frames selected (for example after scrubbing the playhead), **F5** adds a frame on
-  every layer that has frames at or after the playhead, so the layers stay in step. Layers that
-  end before the playhead are left alone. When no layer reaches the playhead, it lengthens the
-  layer you're on up to it.
+* With no frames selected (for example after clicking the frame ruler or dragging the
+  playhead), **F5** adds a frame on every layer that has frames at or after the playhead, so
+  the layers stay in step. Layers that end before the playhead are left alone. When no layer
+  reaches the playhead, it lengthens the layer you're on up to it. **Shift+F5** and
+  **Shift+F6** act on every layer there too; **F6** and **F7** key the layer you're on.
 * With a frame selected, the keys act on that frame's layer, and the selection moves with the
   playhead.
 * With several frames selected, **F6** makes every one of them a keyframe of what it showed, and
@@ -220,6 +241,9 @@ An empty frame shows a hint in **Properties › Frame**: press **F7** to start d
 * Click a frame to select it and move the playhead there.
 * **Shift**-click, or drag across frames, to select a range. A selection can span several
   layers.
+* Click the frame ruler, or drag the playhead, to deselect the frames, as in Animate: the
+  ruler isn't a frame of any one layer. **F5** then adds frames on every layer, until you
+  click a frame of one layer again.
 * **Ctrl+Alt+A** selects every frame.
 
 The frame keys, the header buttons and the right-click menu all act on the whole selection.

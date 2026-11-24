@@ -17,7 +17,9 @@ wipe, or text that reveals a picture.
 2. Make a new layer right above it and draw the mask shape there, with a fill.
 3. Right-click the mask layer and choose **Mask** (or choose **Modify › Timeline › Mask**).
 
-The layer below becomes **masked**: it's indented under the mask, which gets a stencil icon. To
+The layer below becomes **masked**: it's indented under the mask, which gets a stencil icon.
+The new mask layer is **locked**, as Animate leaves it, so you see the result and nothing else.
+Click its padlock when you want to move or reshape the mask. To
 mask more layers with the same mask, right-click each layer right under the group and choose
 **Masked**, or move it in under the mask with the up and down buttons. Moving a layer out of the
 group takes it out of the mask.
@@ -27,8 +29,10 @@ group takes it out of the mask.
 * Only the mask's **fills** count. Strokes, and the mask artwork's opacity, are ignored.
 * The mask always applies, on the stage and in every export, so what you see is what you get.
   If you're coming from Animate, there's no need to lock both layers to preview it.
-* While the mask layer is unlocked, its shapes' edges show in the layer colour, so you can select
-  and reshape them. Lock the mask layer to hide the edge.
+* While the mask layer is unlocked, its shapes' edges show on the stage in the layer colour, so
+  you can select and reshape them. Lock the mask layer to hide the edge: a mask you've just
+  made, or one that came in with an SVG, is locked already. The edge is only there while you
+  edit; it's never in Test Movie or an export.
 * Parts of the masked artwork that are hidden can't be picked on the stage.
 * Hiding the mask layer turns the mask off.
 * The mask layer's artwork can have keyframes and tweens like any other layer, for moving

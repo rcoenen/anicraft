@@ -255,7 +255,8 @@ Elements on locked layers are listed but can't be selected.
 ### The timeline with the keyboard
 
 With the timeline focused, **Left** and **Right** move the playhead one frame, and **Up** and
-**Down** move to the layer above or below. Each move is announced, for example "Frame 12 · Ball ·
+**Down** move to the layer above or below. **Shift+Up** and **Shift+Down** select one more layer
+(or one fewer), and the status bar says how many are selected. Each move is announced, for example "Frame 12 · Ball ·
 Frames 1–24: keyframe · motion tween". The usual keys work too: **,** and **.** for the previous
 and next frame, **Home** and **End**, and **F5**, **F6** and **F7** to insert.
 

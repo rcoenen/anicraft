@@ -63,42 +63,42 @@ The key words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are used as in RFC 2119
 ## This repository
 <!-- craft-agents:end -->
 
-AniCraft is an open-source, native, clean-room 2D animation studio (Adobe Animate class), written in Rust only (egui/eframe UI). The product name is written **AniCraft**; machine names are lowercase (`anicraft-*`). `docs/` has the design: ADRs in `docs/adr/`, UI guidelines, the prioritised backlog and status in `docs/roadmap.md` (a guideline, not a timeline: ADR 0125), and parity with the reference app in `docs/parity.md`.
+AniCraft is an open-source, native, clean-room 2D animation studio in Rust only (egui/eframe UI). The product name is written **AniCraft**; machine names are lowercase (`anicraft-*`). The design is in `docs/`: ADRs in `docs/adr/`, UI guidelines, the backlog and status in `docs/roadmap.md` (a guideline, not a timeline: ADR 0125), and parity in `docs/parity.md`.
 
 ## Workspace map
 
 ```text
-crates/geom     L0  Vec2, Affine (decompose/compose), Rect, Path, flattening, hit testing
-crates/xml      L0  Bounded XML element reader shared by the importers (XFL, SVG)
-crates/plugins  L0  Sandboxed WebAssembly plug-ins: wasmi host, ABI v1, limits, registry (ADR 0017)
-crates/audio    L0  Sound decoding (WAV, Ogg Vorbis, MP3), pure mixing and resampling, WAV, peaks (ADR 0020)
-crates/actions  L0  Timeline action IR: stop/play/goto, targets, button events, frame scripts (ADR 0024)
-crates/guide    L0  The user guide (docs/guide) as a bundled static HTML book, with its link checks (ADR 0069)
-crates/doc      L1  Document model, easing, timeline evaluation, the interactive player, sample scene
-crates/text     L1  Fonts on this computer, shaping and line layout into outlines (ADR 0012)
-crates/render   L2  CPU oracle renderer (coverage accumulation, paints, strokes, PNG)
-crates/xfl      L2  XFL/FLA import: own XML + zip readers, edges → paths (ADR 0009)
-crates/svg      L2  SVG import: shapes, groups, use, styles, gradients, clips/masks → mask layers, text
-crates/engine   L3  Session, undo (with gesture coalescing), command registry, .anicraft format
-crates/gpu      L3  wgpu stage renderer (the default stage): tile binning, compute coverage, bitmaps, filters (ADR 0019, 0029, 0032)
-crates/cli      L4  anicraft-cli: info/render/render-seq/commands/exec/run/new/guide/serve/mcp
-src/            L5  egui shell (app, menus, stage, timeline, panels, theme)
+crates/geom     L0  Vec2, Affine, Rect, Path, flattening, hit testing
+crates/xml      L0  Bounded XML reader shared by the XFL and SVG importers
+crates/plugins  L0  Sandboxed WebAssembly plug-ins: wasmi host, ABI v1, limits (ADR 0017)
+crates/audio    L0  WAV, Ogg Vorbis and MP3 decoding, mixing, resampling, peaks (ADR 0020)
+crates/actions  L0  Timeline action IR, button events, frame scripts (ADR 0024)
+crates/guide    L0  docs/guide as a bundled HTML book, with link checks (ADR 0069)
+crates/doc      L1  Document model, easing, timeline evaluation, player, sample scene
+crates/text     L1  System fonts, shaping, line layout into outlines (ADR 0012)
+crates/render   L2  CPU oracle renderer (coverage, paints, strokes, PNG)
+crates/xfl      L2  XFL/FLA import with its own XML and zip readers (ADR 0009)
+crates/svg      L2  SVG import; clips and masks become mask layers
+crates/engine   L3  Session, undo, command registry, .anicraft format
+crates/gpu      L3  wgpu stage renderer, the default (ADR 0019, 0029, 0032)
+crates/cli      L4  anicraft-cli, including serve and mcp
+src/            L5  egui shell: app, menus, stage, timeline, panels, theme
 ```
 
-A crate depends only on lower layers, and nothing below `src/` uses egui, eframe or winit. `src/architecture_tests.rs` checks both, and that this map lists every crate with its layer (a new crate needs a row here and in its `LAYERS` table).
+A crate depends only on lower layers; nothing below `src/` uses egui, eframe or winit. `src/architecture_tests.rs` checks both, and that this map lists every crate with its layer (a new crate needs a row here and in its `LAYERS` table).
 
 ## Conventions
 
-- New behaviour is a `CommandSpec` in `crates/engine/src/cmds_*.rs`; menus and shortcuts come from the registry. `panic_hunt_every_command` fuzzes every command. A new command namespace needs a plug-in policy (`plugin_may_call` in `crates/engine/src/cmds_plugin.rs`).
-- Commands read and write files through `engine::vfs`, never `std::fs`: `vfs` is where an agent's automation roots are applied (ADR 0124, `engine::access`). A command that takes a path gets a row in `access::PATH_PARAMS` (`every_command_with_a_path_parameter_is_listed` checks it), and code that hands a path to something else (ffmpeg, another crate's reader) calls `access::check` first.
-- `doc::evaluate` is pure: time is a function, and animation never mutates the document. The CPU renderer in `crates/render` is the oracle the GPU renderer is tested against.
-- Text goes through `theme::Type` roles (`guidelines_tests` checks it; `docs/ui-guidelines.md`). Interface text uses `tr!`, `trn!` and `tr_noop!` (ADR 0040, `docs/localisation.md`; check with `--lang pseudo`). The app-local craft-i18n catalog parser stays until ADR 0040's cutover.
-- OS-specific code lives in `src/platform.rs`; shortcut text goes through `platform::shortcut_label`.
-- `unsafe_code = "forbid"`; no workspace module allows `unsafe`. The plug-in SDK in `examples/plugins/sdk` is outside the workspace and uses `unsafe` for the WebAssembly host calls.
-- `deny.toml` is the dependency policy (permissive licences; craft-libs is the one allowed Git source, pinned by `rev`). Assets get a row in `ATTRIBUTION.md` with licence text under `licenses/`; fonts come from craft-fonts through `CRAFT_FONTS_DIR`. Legal notes: `docs/legal/compliance.md`.
-- `scripts/git-hooks` refuses commits on `main` (`git config core.hooksPath scripts/git-hooks`). Branches are `feat/`, `fix/`, `docs/` or `m<N>/<topic>`; commit subjects use conventional prefixes (`feat(render): ...`), and milestone work ends them with `(M5)`. Credits: `AUTHORS.md`.
-- Build footprint settings (one `target/`, incremental off): `docs/development.md`.
+- New behaviour is a `CommandSpec` in `crates/engine/src/cmds_*.rs`; menus and shortcuts come from the registry, and `panic_hunt_every_command` fuzzes every command. A new namespace needs a plug-in policy (`plugin_may_call` in `cmds_plugin.rs`).
+- Commands use `engine::vfs`, never `std::fs`: it applies an agent's automation roots (ADR 0124, `engine::access`). A command with a path parameter gets a row in `access::PATH_PARAMS` (checked by `every_command_with_a_path_parameter_is_listed`); code handing a path to something else (ffmpeg, another crate's reader) calls `access::check` first.
+- `doc::evaluate` is pure: animation never mutates the document. `crates/render` is the oracle the GPU renderer is tested against.
+- Text uses `theme::Type` roles (`guidelines_tests`; `docs/ui-guidelines.md`). Interface text uses `tr!`, `trn!` and `tr_noop!` (ADR 0040, `docs/localisation.md`; check with `--lang pseudo`); the app-local craft-i18n catalog parser stays until ADR 0040's cutover.
+- OS-specific code is in `src/platform.rs`; shortcut text goes through `platform::shortcut_label`.
+- `unsafe_code = "forbid"`: no workspace module allows `unsafe`. The plug-in SDK in `examples/plugins/sdk` is outside the workspace and uses it for WebAssembly host calls.
+- `deny.toml` is the dependency policy (permissive licences; craft-libs, pinned by `rev`, is the one Git source). Assets get an `ATTRIBUTION.md` row with licence text in `licenses/`; fonts come from craft-fonts via `CRAFT_FONTS_DIR`. Legal notes: `docs/legal/compliance.md`.
+- `scripts/git-hooks` refuses commits on `main` (`git config core.hooksPath scripts/git-hooks`). Branches are `feat/`, `fix/`, `docs/` or `m<N>/<topic>`; subjects use conventional prefixes (`feat(render): ...`), and milestone work ends with `(M5)`. Credits: `AUTHORS.md`.
+- Build footprint (one `target/`, incremental off): `docs/development.md`.
 
 ## Checks
 
-For the crates you changed: `cargo clippy -p <crate> --all-targets -- -D warnings` and `cargo test -p <crate>`. For the shell, `cargo test` and `cargo clippy --all-targets`. When dependencies change: `cargo deny check licenses bans sources`. For UI changes: `cargo run -- --screenshot shots/now.png` and look at the PNG.
+For the crates you changed: `cargo clippy -p <crate> --all-targets -- -D warnings` and `cargo test -p <crate>`. For the shell: `cargo test` and `cargo clippy --all-targets`. When dependencies change: `cargo deny check licenses bans sources`. For UI changes: `cargo run -- --screenshot shots/now.png`, then look at the PNG.

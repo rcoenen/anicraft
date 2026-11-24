@@ -42,11 +42,6 @@ fn swatches(n: usize) -> String {
     if n == 1 { "1 swatch".into() } else { format!("{n} swatches") }
 }
 
-fn target_layer<'a>(s: &'a Session, p: &Value) -> Option<&'a Layer> {
-    let id = p.get("layer").and_then(Value::as_u64).map_or(s.layer, LayerId);
-    s.timeline().layer(id)
-}
-
 fn target_frame(s: &Session, p: &Value) -> u32 {
     p.get("frame").and_then(Value::as_u64).and_then(|f| u32::try_from(f).ok()).unwrap_or(s.frame)
 }
@@ -361,7 +356,26 @@ pub fn confirmation(s: &Session, id: &str, p: &Value) -> Option<Confirmation> {
             })
         }
         "layer.delete" => {
-            let l = target_layer(s, p)?;
+            // Several layers at once (the layers selected in the layer list, ADR 0131).
+            let ids = crate::cmds_timeline::layer_targets(s, p).ok()?;
+            if ids.len() > 1 {
+                let tl = s.timeline();
+                // Each with what it holds: a folder goes with everything in it.
+                let mut rows = std::collections::BTreeSet::new();
+                for id in &ids {
+                    let i = tl.layers.iter().position(|x| x.id == *id)?;
+                    let folder = tl.layers.get(i).is_some_and(|l| l.kind == anicraft_doc::LayerKind::Folder);
+                    rows.extend(if folder { tl.group_range(i) } else { i..i + 1 });
+                }
+                let (keys, elements) = rows.iter().filter_map(|i| tl.layers.get(*i)).map(|x| layer_content(x)).fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
+                return (elements > 0).then(|| Confirmation {
+                    title: "Delete layers?".into(),
+                    message: format!("The {} selected hold {} with {}. You can undo this.", plural(rows.len(), "layer"), plural(keys, "keyframe"), plural(elements, "element")),
+                    action: "Delete Layers".into(),
+                    irreversible: false,
+                });
+            }
+            let l = ids.first().and_then(|id| s.timeline().layer(*id))?;
             if l.kind == anicraft_doc::LayerKind::Camera {
                 return camera_removal(s, l);
             }

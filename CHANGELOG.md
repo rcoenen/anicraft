@@ -2,6 +2,50 @@
 
 ## Unreleased
 
+* **Memory and frame time stay flat** (M8, P-004, ADR 0132;
+  [#314](https://github.com/storytold/anicraft/issues/314),
+  [#477](https://github.com/storytold/anicraft/issues/477)).
+  * **Memory follows what is on screen, not how long you have been editing.** Dragging
+    something made a new picture of the stage on every pointer move, and each one stayed in
+    memory until hundreds of megabytes were in use (the "900 MB for a 24-frame move" of #314).
+    AniCraft now keeps the pictures of the document as it is and as it was one step ago, at
+    the zoom on screen and the one before, plus the frames you have played; a long drag or a
+    long zoom ends with the memory it started with.
+  * **Zooming with Ctrl+wheel or a pinch no longer redraws the stage for every step of the
+    zoom.** The picture on screen is scaled while the zoom changes and drawn sharp once it
+    rests. In the web version, which draws on the interface's own thread, this was the
+    stutter of #477; there, moving around the stage now also draws for at most 8 ms of a
+    frame and fills in the rest over the next frames.
+  * **Zoomed far into a large drawing, a stage tile no longer goes through the whole
+    drawing.** The parts of a filled shape above, below and to the right of the tile are left
+    out before drawing. The pictures are the same to the last bit (tests compare them).
+  * **What is on screen is drawn before look-ahead.** A visible tile used to wait for up to
+    31 tiles being drawn ahead around the view or along the timeline.
+  * One step further back in the undo history is redrawn when you return to it (a few
+    milliseconds) instead of being found in memory.
+
+* **Timeline and panel bugs from the tracker** (M8, backlog P-009 and P-010, ADR 0131).
+  * **Several layers selected at once** (#512). **Ctrl**-click a layer's name to add it or take
+    it out, **Shift**-click for every layer from the active one, or **Shift+Up** and
+    **Shift+Down** on the focused timeline. Drag any one of them and they all move, landing
+    together in the order they had; the folder button puts them in a new folder; Delete Layer
+    takes them all and asks once. Each is one undo step. Headless: `add: toggle | range` on
+    `layer.select`, `layers: [ids]` on `layer.move` and `layer.delete`, `wrap` on
+    `layer.new_folder`, `layer_selection` in the session state.
+  * **A click on the frame ruler leaves no frames selected** (#195; jayzed80, outside PR #222),
+    also when the playhead stays inside the selection, so **F5** then adds frames on every
+    layer as in Animate. **F6** and **F7** stay on the layer you're on.
+  * **A new mask is locked**, as Animate leaves it (#429): the result shows without the mask's
+    edge in the layer colour. Unlock the mask layer to see the edge and reshape it.
+  * **The "1–9 of 16 layers" count no longer lies over the buttons** in the layer list's header
+    (#523; Mex, outside PR #535). In a column too narrow for it, the heading shows it on hover.
+  * **The Movie Explorer's list uses the whole height of its pane** (#513; Mex, outside PR
+    #532) instead of stopping at about ten rows.
+  * Tests now pin two reports that `main` no longer shows: a click on the fill or stroke square
+    under the tools opens its colour picker (#246), and the docks keep their size while the
+    pointer moves over them at every interface scale (#159, not reproduced; the issue stays
+    open for a retest).
+
 * **An imported Animate file keeps its name** (ADR 0009 note): a `.fla`, `.xfl` or XFL folder
   opens with its own name on its tab and in the window title instead of "Untitled", marked as
   imported (a dim "Imported" on the tab, "(imported)" in the title, where it came from in the
@@ -9,7 +53,6 @@
   `.anicraft` of the same name beside the original, and from then on the tab shows that file.
   Opening the same Animate file again shows its tab. Save dialogs now open in the suggested
   file's folder.
-
 * **Text reads right: mixed directions, and letters from a fallback face** (M5, backlog P-008,
   ADR 0130). With outside pull requests #39 and #40 by SoldierPePe, whose commits are merged
   here and rebuilt on styled text.

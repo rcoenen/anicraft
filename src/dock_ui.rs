@@ -1500,6 +1500,44 @@ mod tests {
         settle(ctx, app);
     }
 
+    /// #159: the docks keep their size while the pointer moves over them, whatever the interface
+    /// scale. The report names the scales where the right-hand dock crept wider with each
+    /// pointer move (on a 5K screen at 200 %); a dock is only ever as wide as its edge was
+    /// dragged, also when what it shows is wider than it is.
+    #[test]
+    fn the_docks_keep_their_size_under_the_pointer_at_every_interface_scale() {
+        let long: String = "A name far too long for any dock to show on one line. ".repeat(3);
+        for (native, pixels) in [(2.0f32, vec2(5120.0, 2880.0)), (1.0, vec2(1919.0, 1037.0))] {
+            for scale in [0.85f32, 0.95, 1.1, 1.35, 1.6, 1.7, 1.85] {
+                let (mut app, ctx) = app();
+                app.prefs.ui_scale = scale;
+                app.apply_prefs(&ctx);
+                let screen = Rect::from_min_size(egui::Pos2::ZERO, pixels / (native * scale));
+                let run = |app: &mut App, events: Vec<egui::Event>| {
+                    let mut input = egui::RawInput { screen_rect: Some(screen), events, ..Default::default() };
+                    input.viewports.entry(egui::ViewportId::ROOT).or_default().native_pixels_per_point = Some(native);
+                    ctx.run_ui(input, |ui| app.frame(ui)).textures_delta.clear();
+                };
+                // Something wide in every panel: long layer and symbol names, a selection.
+                for l in app.s.timeline().layers.iter().map(|l| l.id).collect::<Vec<_>>() {
+                    app.run("layer.rename", serde_json::json!({"layer": l.0, "name": long}));
+                }
+                app.run("edit.select_all", serde_json::json!({}));
+                for _ in 0..6 {
+                    run(&mut app, Vec::new());
+                }
+                let stage = app.dock_view.stage.expect("the stage is drawn");
+                assert!(stage.width() > 100.0 && stage.right() < screen.right() - MIN_SIDE + 1.0, "a dock is beside the stage at {scale}: {stage:?} in {screen:?}");
+                // Across the right-hand dock and down it, as a hand moves.
+                for i in 0..30 {
+                    let at = egui::pos2(stage.right() + 10.0 + (i % 7) as f32 * 25.0, stage.top() + 20.0 + (i % 11) as f32 * 30.0);
+                    run(&mut app, vec![egui::Event::PointerMoved(at)]);
+                    assert_eq!(app.dock_view.stage, Some(stage), "the docks moved under the pointer at scale {scale} on a ×{native} screen (move {i})");
+                }
+            }
+        }
+    }
+
     fn drawn(app: &App, over: Over) -> Option<Drawn> {
         app.dock_view.drawn.iter().find(|d| d.over == over).copied()
     }

@@ -45,13 +45,13 @@ pub fn specs() -> Vec<CommandSpec> {
             Ok(json!({"frame": f}))
         }),
         c("layer.new", "New Layer", "Insert/Timeline", None, "{name?}", true, new_layer),
-        c("layer.new_folder", "New Folder", "Insert/Timeline", None, "{name?}", true, new_folder),
-        c("layer.delete", "Delete Layer", "Modify/Timeline", None, "{layer? (a folder goes with its contents)}", true, delete_layer),
+        c("layer.new_folder", "New Folder", "Insert/Timeline", None, "{name?, wrap?: bool (default: true when several layers are selected: they go into the new folder, which lands where the top one was; false: an empty folder above the active layer)}", true, new_folder),
+        c("layer.delete", "Delete Layer", "Modify/Timeline", None, "{layer? | layers?: [ids] (default: every layer selected in the layer list; a folder goes with its contents)}", true, delete_layer),
         c("layer.rename", "Rename Layer", "", None, "{name, layer?}", true, rename_layer),
         c("layer.toggle_visible", "Show/Hide Layer", "", None, "{layer?, on?: bool (default: the other way), all?: true (every layer but the camera, as the eye above the layers: hides them all when all show, else shows them all)}", true, |s, p| toggle(s, p, |l| &mut l.visible, true)),
         c("layer.toggle_lock", "Lock/Unlock Layer", "", None, "{layer?, on?: bool (default: the other way), all?: true (every layer but the camera, as the padlock above the layers: unlocks them all when all are locked, else locks them all)}", true, |s, p| toggle(s, p, |l| &mut l.locked, false)),
         c("layer.toggle_outline", "Outline Layer", "", None, "{layer?, on?: bool (default: the other way), all?: true (every layer but the camera, as the square above the layers: back to artwork when all are outlines, else all as outlines)}", true, |s, p| toggle(s, p, |l| &mut l.outline, false)),
-        c("layer.select", "Select Layer", "", None, "{layer: id} or {index}, select?: bool (also select all of its artwork at the playhead, as a click on the layer's name does; nothing on a locked or hidden layer)", false, select_layer),
+        c("layer.select", "Select Layer", "", None, "{layer: id} or {index}, select?: bool (also select all of its artwork at the playhead, as a click on the layer's name does; nothing on a locked or hidden layer), add?: \"toggle\" (Ctrl-click: the layer joins or leaves the layers selected with the active one) | \"range\" (Shift-click: every layer from the active one to this one) → {layer: the active layer, layers: [the selected layers, top to bottom]}", false, select_layer),
         c("layer.move_up", "Move Layer Up", "Modify/Timeline", None, "{layer?}", true, |s, p| move_layer(s, p, -1)),
         c("layer.move_down", "Move Layer Down", "Modify/Timeline", None, "{layer?}", true, |s, p| move_layer(s, p, 1)),
         c(
@@ -59,11 +59,11 @@ pub fn specs() -> Vec<CommandSpec> {
             "Move Layer To",
             "",
             None,
-            "{layer?, before?: layer id | after?: layer id | into?: folder id} moves a layer anywhere in the stack, as a drag in the timeline does; a folder, mask or guide moves with everything in it. before / after: it lands just above that layer, or just below it and whatever it holds, beside it (in the same folder, or under the same mask or guide: normal layers only). into: it becomes the first layer in that folder. None of them: the bottom of the stack, outside every folder",
+            "{layer? | layers?: [ids] (default: every layer selected in the layer list; they land together, in the order they had), before?: layer id | after?: layer id | into?: folder id} moves layers anywhere in the stack, as a drag in the timeline does; a folder, mask or guide moves with everything in it. before / after: it lands just above that layer, or just below it and whatever it holds, beside it (in the same folder, or under the same mask or guide: normal layers only). into: it becomes the first layer in that folder. None of them: the bottom of the stack, outside every folder",
             true,
             move_layer_to,
         ),
-        c("layer.toggle_mask", "Mask", "Modify/Timeline", None, "{layer?}", true, toggle_mask),
+        c("layer.toggle_mask", "Mask", "Modify/Timeline", None, "{layer?} turns the layer into a mask over the layer below, or back into a normal layer. A new mask is locked: unlocked, its edge shows on the stage in the layer colour, to pick and reshape it", true, toggle_mask),
         c("layer.set_type", "Layer Type", "", None, "{type: normal|mask|masked|guide|guided, layer?}", true, set_layer_type),
         c("layer.add_motion_guide", "Add Classic Motion Guide", "Insert/Timeline", None, "{layer?}", true, add_motion_guide),
     ]
@@ -87,8 +87,16 @@ fn toggle_mask(s: &mut Session, p: &Value) -> Result<Value> {
         {
             Arc::make_mut(below).parent = Some(id);
         }
+        // The new mask is locked, as Animate leaves it (#429, ADR 0131): the result shows
+        // clean, without the mask's edge in the layer colour. Unlocking it shows the edge, to
+        // pick and reshape the mask.
+        if let Some(mask) = tl.layer_mut(id) {
+            mask.locked = true;
+        }
     }
-    Ok(layer_type_json(s, id))
+    let mut out = layer_type_json(s, id);
+    out["locked"] = json!(s.timeline().layer(id).is_some_and(|l| l.locked));
+    Ok(out)
 }
 
 /// Add Classic Motion Guide: a guide layer above the layer, which the layer then follows.
@@ -828,8 +836,62 @@ pub(crate) fn new_layer(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 /// New Folder: an empty folder above the active layer, beside it (never inside a mask).
+///
+/// With several layers selected in the layer list (or `wrap`), they go into the new folder,
+/// which lands where the top one was (#512, ADR 0131).
 fn new_folder(s: &mut Session, p: &Value) -> Result<Value> {
-    add_layer(s, p, LayerKind::Folder)
+    let selected = s.picked_layers();
+    if !opt_bool(p, "wrap")?.unwrap_or(selected.len() > 1) {
+        return add_layer(s, p, LayerKind::Folder);
+    }
+    let tl = s.timeline();
+    let heads: Vec<LayerId> = block_heads(tl, &selected).into_iter().filter(|id| tl.layer(*id).is_some_and(|l| l.kind != LayerKind::Camera)).collect();
+    let Some(top) = heads.first().copied() else { return add_layer(s, p, LayerKind::Folder) };
+    let was = s.layer;
+    // Above the top one, beside it; then they all move in, in the order they had.
+    s.layer = top;
+    let made = add_layer(s, p, LayerKind::Folder).and_then(|v| {
+        let folder = LayerId(v["layer"].as_u64().unwrap_or(0));
+        let tl = crate::editing::edited_mut(&mut s.doc, s.scene, &s.editing)?;
+        move_blocks(tl, &heads, Landing::Into(folder))?;
+        Ok(json!({"layer": folder.0, "wrapped": heads.len()}))
+    });
+    if made.is_err() {
+        s.layer = was;
+    }
+    made
+}
+
+/// The layers a layer command acts on, top to bottom: `layers: [ids]`, else `layer`, else every
+/// layer selected in the layer list (the active one, and those picked with it; ADR 0131).
+pub(crate) fn layer_targets(s: &Session, p: &Value) -> Result<Vec<LayerId>> {
+    let ids: Vec<LayerId> = match (opt_u64_list(p, "layers")?, opt_u64(p, "layer")?) {
+        (Some(v), _) if v.is_empty() => return Err(EngineError::Param("param 'layers' must not be empty".into())),
+        (Some(v), _) => v.into_iter().map(LayerId).collect(),
+        (None, Some(id)) => vec![LayerId(id)],
+        (None, None) => return Ok(s.picked_layers()),
+    };
+    let tl = s.timeline();
+    if let Some(gone) = ids.iter().find(|id| tl.layer(**id).is_none()) {
+        return Err(EngineError::State(format!("no layer with id {}", gone.0)));
+    }
+    let ids: std::collections::HashSet<LayerId> = ids.into_iter().collect();
+    Ok(tl.layers.iter().map(|l| l.id).filter(|id| ids.contains(id)).collect())
+}
+
+/// Of `ids`, the layers that move on their own: one inside a folder, mask or guide that is also
+/// in `ids` goes with it. Top to bottom.
+fn block_heads(tl: &anicraft_doc::Timeline, ids: &[LayerId]) -> Vec<LayerId> {
+    let mut heads = Vec::new();
+    // Rows above this one are inside a block already taken.
+    let mut covered = 0;
+    for (i, l) in tl.layers.iter().enumerate() {
+        if i >= covered && ids.contains(&l.id) {
+            covered = tl.group_range(i).end;
+            heads.push(l.id);
+        }
+    }
+    heads
 }
 
 /// The colour the `n`th layer gets (its outline and timeline bar).
@@ -878,7 +940,24 @@ fn add_layer(s: &mut Session, p: &Value, kind: LayerKind) -> Result<Value> {
 /// Deletes a layer; a folder goes with everything in it. A layer masked by a deleted mask
 /// stays where it is, in the mask's folder.
 fn delete_layer(s: &mut Session, p: &Value) -> Result<Value> {
-    let id = opt_u64(p, "layer")?.map_or(s.layer, LayerId);
+    let ids = layer_targets(s, p)?;
+    let [first, rest @ ..] = ids.as_slice() else { return Err(EngineError::State("no layer to delete".into())) };
+    if rest.is_empty() {
+        return delete_one(s, *first);
+    }
+    // Several at once (the layers selected in the layer list): one undo step, and all or none.
+    let (mut deleted, mut layers) = (Vec::new(), 0);
+    for id in ids {
+        // One inside a folder deleted before it went with the folder.
+        if s.timeline().layer(id).is_some() {
+            layers += delete_one(s, id)?["layers"].as_u64().unwrap_or(0);
+            deleted.push(id.0);
+        }
+    }
+    Ok(json!({"deleted": deleted.first(), "deleted_layers": deleted, "layers": layers}))
+}
+
+fn delete_one(s: &mut Session, id: LayerId) -> Result<Value> {
     let tl = s.timeline();
     let i = tl.layers.iter().position(|l| l.id == id).ok_or_else(|| EngineError::State(format!("no layer with id {}", id.0)))?;
     let is_folder = tl.layers.get(i).is_some_and(|l| l.kind == LayerKind::Folder);
@@ -954,6 +1033,11 @@ fn select_layer(s: &mut Session, p: &Value) -> Result<Value> {
     if s.timeline().layer(id).is_none() {
         return Err(EngineError::State(format!("no layer with id {}", id.0)));
     }
+    if let Some(how) = opt_str(p, "add")? {
+        return extend_layer_selection(s, id, how);
+    }
+    // A plain click: this layer alone.
+    s.layer_sel.clear();
     // A click on a layer's name in Animate: the layer becomes active with all of its artwork at
     // the playhead selected (ADR 0044).
     if opt_bool(p, "select")? == Some(true) {
@@ -969,75 +1053,156 @@ fn select_layer(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"layer": id.0}))
 }
 
+/// Ctrl- and Shift-click in the layer list (#512, ADR 0131). `toggle`: the layer joins the
+/// selected layers or leaves them (the last one stays: a timeline always has an active layer;
+/// when the active layer leaves, the nearest selected one becomes active). `range`: every layer
+/// from the active one to this one, the active layer staying the end it is counted from.
+fn extend_layer_selection(s: &mut Session, id: LayerId, how: &str) -> Result<Value> {
+    let mut sel = s.picked_layers();
+    match how {
+        "toggle" => match sel.iter().position(|l| *l == id) {
+            Some(at) if sel.len() > 1 => {
+                sel.remove(at);
+                if s.layer == id {
+                    s.layer = sel.get(at).or(sel.last()).copied().unwrap_or(id);
+                    s.selection.clear();
+                }
+            }
+            Some(_) => {}
+            None => sel.push(id),
+        },
+        "range" => {
+            let tl = s.timeline();
+            let at = |l: LayerId| tl.layers.iter().position(|x| x.id == l);
+            let (Some(a), Some(b)) = (at(s.layer), at(id)) else { return Err(EngineError::State("no active layer to count the range from".into())) };
+            sel = tl.layers.iter().skip(a.min(b)).take(a.abs_diff(b) + 1).map(|l| l.id).collect();
+        }
+        other => return Err(EngineError::Param(format!("unknown add '{other}' (toggle or range)"))),
+    }
+    s.layer_sel = sel;
+    Ok(json!({"layer": s.layer.0, "layers": s.picked_layers().iter().map(|l| l.0).collect::<Vec<_>>()}))
+}
+
+/// Where moved layers land (`layer.move`).
+#[derive(Clone, Copy)]
+enum Landing {
+    /// Just above this layer, beside it.
+    Before(LayerId),
+    /// Just below this layer and whatever it holds, beside it.
+    After(LayerId),
+    /// First inside this folder.
+    Into(LayerId),
+    /// The bottom of the stack, outside every folder.
+    Bottom,
+}
+
 /// Moves a layer anywhere in the stack (a drag in the timeline, #407). A folder, mask or guide
 /// goes with everything in it. The layer lands beside `before` (just above it) or `after` (just
 /// below it and whatever it holds), with that layer's parent; first inside the folder `into`;
 /// or at the bottom outside every folder.
 fn move_layer_to(s: &mut Session, p: &Value) -> Result<Value> {
-    let id = opt_u64(p, "layer")?.map_or(s.layer, LayerId);
     let before = opt_u64(p, "before")?.map(LayerId);
     let after = opt_u64(p, "after")?.map(LayerId);
     let into = opt_u64(p, "into")?.map(LayerId);
-    if [before, after, into].iter().flatten().count() > 1 {
-        return Err(EngineError::Param("pass one of before, after and into".into()));
-    }
-    let tl = crate::editing::edited_mut(&mut s.doc, s.scene, &s.editing)?;
-    let pos = |tl: &anicraft_doc::Timeline, l: LayerId| tl.layers.iter().position(|x| x.id == l).ok_or_else(|| EngineError::State(format!("no layer with id {}", l.0)));
-    let i = pos(tl, id)?;
-    let block = tl.group_range(i);
-    let (kind, was_parent) = tl.layers.get(i).map_or((LayerKind::Normal, None), |l| (l.kind, l.parent));
-    if kind == LayerKind::Camera {
-        return Err(EngineError::State("The camera layer stays on top".into()));
-    }
-    // Where it goes: the row it lands above, counted before it leaves (the row count: the
-    // bottom), and its new parent.
-    let (slot, parent) = if let Some(f) = into {
-        let fi = pos(tl, f)?;
-        if tl.layers.get(fi).is_none_or(|l| l.kind != LayerKind::Folder) {
-            return Err(EngineError::State("Only a folder takes layers: pass a folder's id as into".into()));
-        }
-        if block.contains(&fi) {
-            return Err(EngineError::State("A folder can't go inside itself".into()));
-        }
-        (fi + 1, Some(f))
-    } else if let Some(beside) = before.or(after) {
-        let bi = pos(tl, beside)?;
-        if block.contains(&bi) {
-            // Beside itself or something inside it: it is there already.
-            return Ok(json!({"index": i, "parent": was_parent.map(|p| p.0)}));
-        }
-        let parent = tl.layers.get(bi).and_then(|l| l.parent);
-        if kind != LayerKind::Normal && parent.and_then(|p| tl.layer(p)).is_some_and(|p| matches!(p.kind, LayerKind::Mask | LayerKind::Guide)) {
-            return Err(EngineError::State("Only a normal layer can go under a mask or a guide".into()));
-        }
-        (if before.is_some() { bi } else { tl.group_range(bi).end }, parent)
-    } else {
-        (tl.layers.len(), None)
+    let to = match (before, after, into) {
+        (Some(l), None, None) => Landing::Before(l),
+        (None, Some(l), None) => Landing::After(l),
+        (None, None, Some(l)) => Landing::Into(l),
+        (None, None, None) => Landing::Bottom,
+        _ => return Err(EngineError::Param("pass one of before, after and into".into())),
     };
-    // Folders nest so deep and no deeper: refuse rather than flatten what was dragged.
-    let head = tl.depth(i);
-    let deepest = block.clone().map(|j| tl.depth(j).saturating_sub(head)).max().unwrap_or(0);
+    let ids = layer_targets(s, p)?;
+    let tl = crate::editing::edited_mut(&mut s.doc, s.scene, &s.editing)?;
+    let mut heads = block_heads(tl, &ids);
+    if heads.len() > 1 {
+        // The camera stays on top: selected with others, it is left where it is.
+        heads.retain(|id| tl.layer(*id).is_some_and(|l| l.kind != LayerKind::Camera));
+    }
+    move_blocks(tl, &heads, to)
+}
+
+/// Moves the layers `heads` (top to bottom, none inside another), each with everything it
+/// holds, to `to`: they land together, in the order they had (#512).
+fn move_blocks(tl: &mut anicraft_doc::Timeline, heads: &[LayerId], to: Landing) -> Result<Value> {
+    let pos = |tl: &anicraft_doc::Timeline, l: LayerId| tl.layers.iter().position(|x| x.id == l).ok_or_else(|| EngineError::State(format!("no layer with id {}", l.0)));
+    let mut blocks = Vec::with_capacity(heads.len());
+    for id in heads {
+        let i = pos(tl, *id)?;
+        if tl.layers.get(i).is_some_and(|l| l.kind == LayerKind::Camera) {
+            return Err(EngineError::State("The camera layer stays on top".into()));
+        }
+        blocks.push(tl.group_range(i));
+    }
+    let Some(first) = blocks.first().cloned() else { return Err(EngineError::State("no layer to move".into())) };
+    let was_parent = tl.layers.get(first.start).and_then(|l| l.parent);
+    // The moved block a row is in, if any.
+    let block_of = |row: usize| blocks.iter().find(|b| b.contains(&row));
+    // Where they go: the row they land above, counted before they leave (the row count: the
+    // bottom), and their new parent.
+    let (slot, parent) = match to {
+        Landing::Into(f) => {
+            let fi = pos(tl, f)?;
+            if tl.layers.get(fi).is_none_or(|l| l.kind != LayerKind::Folder) {
+                return Err(EngineError::State("Only a folder takes layers: pass a folder's id as into".into()));
+            }
+            if block_of(fi).is_some() {
+                return Err(EngineError::State("A folder can't go inside itself".into()));
+            }
+            (fi + 1, Some(f))
+        }
+        Landing::Before(beside) | Landing::After(beside) => {
+            let bi = pos(tl, beside)?;
+            let above = matches!(to, Landing::Before(_));
+            match block_of(bi) {
+                // Beside itself or something inside it: it is there already.
+                Some(_) if blocks.len() == 1 => return Ok(json!({"index": first.start, "parent": was_parent.map(|p| p.0)})),
+                // Beside one of the layers that move: the others gather around it.
+                Some(b) => (if above { b.start } else { b.end }, tl.layers.get(b.start).and_then(|l| l.parent)),
+                None => (if above { bi } else { tl.group_range(bi).end }, tl.layers.get(bi).and_then(|l| l.parent)),
+            }
+        }
+        Landing::Bottom => (tl.layers.len(), None),
+    };
+    let under_mask_or_guide = parent.and_then(|p| tl.layer(p)).is_some_and(|p| matches!(p.kind, LayerKind::Mask | LayerKind::Guide));
     let new_head = match parent {
         Some(p) => tl.depth(pos(tl, p)?) + 1,
         None => 0,
     };
-    if new_head + deepest >= anicraft_doc::MAX_LAYER_DEPTH {
-        return Err(EngineError::State(format!("Folders nest at most {} deep", anicraft_doc::MAX_LAYER_DEPTH)));
+    for b in &blocks {
+        if under_mask_or_guide && tl.layers.get(b.start).is_some_and(|l| l.kind != LayerKind::Normal) {
+            return Err(EngineError::State("Only a normal layer can go under a mask or a guide".into()));
+        }
+        // Folders nest so deep and no deeper: refuse rather than flatten what was dragged.
+        let head = tl.depth(b.start);
+        let deepest = b.clone().map(|j| tl.depth(j).saturating_sub(head)).max().unwrap_or(0);
+        if new_head + deepest >= anicraft_doc::MAX_LAYER_DEPTH {
+            return Err(EngineError::State(format!("Folders nest at most {} deep", anicraft_doc::MAX_LAYER_DEPTH)));
+        }
     }
-    // A slot at the moved rows themselves is where they already are (only the parent changes).
-    let slot = if block.contains(&slot) { block.end } else { slot };
-    let at = if slot >= block.end { slot - block.len() } else { slot };
-    let moved: Vec<Arc<Layer>> = tl.layers.drain(block).collect();
+    // The slot counted among the rows that stay (a slot inside the moved rows is where they
+    // already are: only the parent changes).
+    let at = slot - blocks.iter().map(|b| b.end.min(slot).saturating_sub(b.start.min(slot))).sum::<usize>();
+    let mut moved: Vec<Arc<Layer>> = Vec::new();
+    for b in blocks.iter().rev() {
+        let mut block: Vec<Arc<Layer>> = tl.layers.drain(b.clone()).collect();
+        if let Some(head) = block.first_mut()
+            && head.parent != parent
+        {
+            Arc::make_mut(head).parent = parent;
+        }
+        block.append(&mut moved);
+        moved = block;
+    }
     let at = at.min(tl.layers.len());
     tl.layers.splice(at..at, moved);
-    if let Some(l) = tl.layers.get_mut(at)
-        && l.parent != parent
-    {
-        Arc::make_mut(l).parent = parent;
-    }
     tl.repair_masks();
+    let Some(id) = heads.first().copied() else { return Ok(json!({})) };
     let index = pos(tl, id)?;
-    Ok(json!({"index": index, "parent": tl.layers.get(index).and_then(|l| l.parent).map(|p| p.0)}))
+    let mut out = json!({"index": index, "parent": tl.layers.get(index).and_then(|l| l.parent).map(|p| p.0)});
+    if heads.len() > 1 {
+        out["moved"] = json!(heads.len());
+    }
+    Ok(out)
 }
 
 /// Moves a layer one step. A folder or mask moves with everything in it, past a whole sibling,
