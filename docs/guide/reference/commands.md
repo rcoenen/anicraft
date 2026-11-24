@@ -144,7 +144,7 @@ This page is generated from the command registry, so it always matches the versi
 - **New Layer** `layer.new` · Insert › Timeline · changes the document
   Parameters: `{name?}`
 - **New Folder** `layer.new_folder` · Insert › Timeline · changes the document
-  Parameters: `{name?}`
+  Parameters: `{name?, wrap?: bool (default: true when several layers are selected: they go into the new folder, which lands where the top one was; false: an empty folder above the active layer)}`
 - **Add Classic Motion Guide** `layer.add_motion_guide` · Insert › Timeline · changes the document
   Parameters: `{layer?}`
 - **Add Camera** `camera.add` · Insert › Timeline · changes the document
@@ -159,13 +159,13 @@ This page is generated from the command registry, so it always matches the versi
 - **Envelope** `modify.envelope` · Modify › Transform
   Parameters: `{} opens an envelope around the selected shapes and drawing objects on the active layer (ADR 0080): a mesh of 4 × 4 Bézier control points over their bounds, at rest → {points: [[x, y] × 16] (row by row from the top-left), bounds: [x, y, w, h], shapes}. Then modify.envelope_move bends them. Symbols, text, groups and bitmaps can't be bent: break them apart first`
 - **Delete Layer** `layer.delete` · Modify › Timeline · changes the document
-  Parameters: `{layer? (a folder goes with its contents)}`
+  Parameters: `{layer? | layers?: [ids] (default: every layer selected in the layer list; a folder goes with its contents)}`
 - **Move Layer Up** `layer.move_up` · Modify › Timeline · changes the document
   Parameters: `{layer?}`
 - **Move Layer Down** `layer.move_down` · Modify › Timeline · changes the document
   Parameters: `{layer?}`
 - **Mask** `layer.toggle_mask` · Modify › Timeline · changes the document
-  Parameters: `{layer?}`
+  Parameters: `{layer?} turns the layer into a mask over the layer below, or back into a normal layer. A new mask is locked: unlocked, its edge shows on the stage in the layer colour, to pick and reshape it`
 - **Layer Properties** `layer.set_properties` · Modify › Timeline · changes the document
   Parameters: `{layer?, name?, type?: normal|mask|masked|guide|guided, mask?: coverage|alpha|luminance (a mask layer's mask type), color?, outline?: bool (view as outlines), height?: 100|200|300, opacity?: 0..100 (percent), visible?, locked?, onion?} sets several at once, as one undo step; answers with the layer's properties`
 - **Remove Camera** `camera.remove` · Modify › Timeline · changes the document
@@ -370,9 +370,9 @@ These commands have no menu item: the panels, the stage and the timeline use the
 - **Outline Layer** `layer.toggle_outline` · changes the document
   Parameters: `{layer?, on?: bool (default: the other way), all?: true (every layer but the camera, as the square above the layers: back to artwork when all are outlines, else all as outlines)}`
 - **Select Layer** `layer.select`
-  Parameters: `{layer: id} or {index}, select?: bool (also select all of its artwork at the playhead, as a click on the layer's name does; nothing on a locked or hidden layer)`
+  Parameters: `{layer: id} or {index}, select?: bool (also select all of its artwork at the playhead, as a click on the layer's name does; nothing on a locked or hidden layer), add?: "toggle" (Ctrl-click: the layer joins or leaves the layers selected with the active one) | "range" (Shift-click: every layer from the active one to this one) → {layer: the active layer, layers: [the selected layers, top to bottom]}`
 - **Move Layer To** `layer.move` · changes the document
-  Parameters: `{layer?, before?: layer id | after?: layer id | into?: folder id} moves a layer anywhere in the stack, as a drag in the timeline does; a folder, mask or guide moves with everything in it. before / after: it lands just above that layer, or just below it and whatever it holds, beside it (in the same folder, or under the same mask or guide: normal layers only). into: it becomes the first layer in that folder. None of them: the bottom of the stack, outside every folder`
+  Parameters: `{layer? | layers?: [ids] (default: every layer selected in the layer list; they land together, in the order they had), before?: layer id | after?: layer id | into?: folder id} moves layers anywhere in the stack, as a drag in the timeline does; a folder, mask or guide moves with everything in it. before / after: it lands just above that layer, or just below it and whatever it holds, beside it (in the same folder, or under the same mask or guide: normal layers only). into: it becomes the first layer in that folder. None of them: the bottom of the stack, outside every folder`
 - **Layer Type** `layer.set_type` · changes the document
   Parameters: `{type: normal|mask|masked|guide|guided, layer?}`
 - **Onion Skin Layer** `layer.set_onion` · changes the document

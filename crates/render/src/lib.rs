@@ -143,6 +143,12 @@ pub fn render_frame(doc: &Document, frame: u32, scale: f32) -> Result<Pixmap, Re
 
 /// Renders a display list.
 pub fn render(dl: &DisplayList, view: &View) -> Result<(Pixmap, RenderStats), RenderError> {
+    render_cut(dl, view, true)
+}
+
+/// [`render`]; `cut` off prepares every item whole (see [`unseen`]), which draws the same
+/// pixels more slowly: the tests compare the two.
+fn render_cut(dl: &DisplayList, view: &View, cut: bool) -> Result<(Pixmap, RenderStats), RenderError> {
     let mut pm = Pixmap::new(view.width, view.height)?;
     // The background is filled band by band, in parallel, just before each band draws (a
     // serial fill of a 1080p float buffer cost as much as all the drawing).
@@ -155,7 +161,7 @@ pub fn render(dl: &DisplayList, view: &View) -> Result<(Pixmap, RenderStats), Re
 
     // Phase 1 (parallel over items): cull, flatten, stroke and build shaders. Output keeps
     // display-list order.
-    let mut prepared: Vec<Vec<Prepared>> = dl.items.par_iter().zip(&in_run).map(|(item, &skip)| if skip { Vec::new() } else { prepare(item, &view.transform, surface, soft_art(dl, item)) }).collect();
+    let mut prepared: Vec<Vec<Prepared>> = dl.items.par_iter().zip(&in_run).map(|(item, &skip)| if skip { Vec::new() } else { prepare(item, &view.transform, surface, soft_art(dl, item), cut) }).collect();
     for r in &runs {
         if let (Some(op), Some(slot)) = (filtered_group(dl, r, view, surface)?, prepared.get_mut(r.start)) {
             slot.push(op);
@@ -367,7 +373,7 @@ pub fn prepare_scene(dl: &DisplayList, view: &View) -> Result<(Scene, RenderStat
     let surface = IRect { x0: 0, y0: 0, x1: view.width as i32, y1: view.height as i32 };
     let runs = filtered_runs(dl);
     let in_run = in_runs(dl, &runs);
-    let mut prepared: Vec<Vec<Prepared>> = dl.items.par_iter().zip(&in_run).map(|(item, &skip)| if skip { Vec::new() } else { prepare(item, &view.transform, surface, soft_art(dl, item)) }).collect();
+    let mut prepared: Vec<Vec<Prepared>> = dl.items.par_iter().zip(&in_run).map(|(item, &skip)| if skip { Vec::new() } else { prepare(item, &view.transform, surface, soft_art(dl, item), true) }).collect();
     let mut layers = Vec::new();
     for r in &runs {
         if let (Some(setup), Some(slot)) = (filter_setup(dl, r, view, surface), prepared.get_mut(r.start)) {
@@ -796,10 +802,86 @@ fn soft_art(dl: &DisplayList, item: &DisplayItem) -> bool {
     item.masks.is_some_and(|c| dl.clip_mode(c).is_soft())
 }
 
+/// Whether every point of `pts` is in one of the three places where an edge between two of them
+/// adds nothing to any pixel of `surface`: above it, below it, or to its right (ADR 0132).
+///
+/// The rasterizer skips an edge above or below the rows it fills, and what an edge at or past
+/// the right end of a row deposits falls in cells no pixel reads. An edge to the *left* does
+/// count (it carries the winding into the row), so the left is not one of the places. Above is
+/// exact at the surface's first row; below and right start `far` pixels out, for a caller that
+/// asks about points it has not computed (a curve's hull: its points are sums of the hull's,
+/// rounded).
+fn unseen(pts: &[Vec2], surface: IRect, far: f32) -> bool {
+    let (top, bottom, right) = (surface.y0 as f32, surface.y1 as f32 + far, surface.x1 as f32 + far);
+    pts.iter().all(|p| p.y <= top) || pts.iter().all(|p| p.y >= bottom) || pts.iter().all(|p| p.x >= right)
+}
+
+/// How far past the surface's bottom and right a curve's hull must be for the curve to be left
+/// as its chord: more than the rounding of its points' sums could be (a few parts in ten
+/// million of the coordinates, which is under a pixel at any surface size the renderer takes).
+fn far(surface: IRect) -> f32 {
+    1.0 + surface.x1.max(surface.y1) as f32 * 1e-4
+}
+
+/// Whether the end points of `path`'s segments under `m` reach all four sides of `surface` or
+/// beyond: then its pixel bounds are the whole surface whatever its curves do in between, and
+/// the curves off the surface may be left as chords without moving them.
+fn spans(path: &anicraft_geom::Path, m: &Affine, surface: IRect) -> bool {
+    use anicraft_geom::PathCmd;
+    let mut r = Rect::EMPTY;
+    let (mut start, mut last) = (Vec2::ZERO, Vec2::ZERO);
+    for c in &path.cmds {
+        match *c {
+            PathCmd::MoveTo(p) => {
+                start = m.apply(p);
+                last = start;
+            }
+            PathCmd::LineTo(p) | PathCmd::QuadTo(_, p) | PathCmd::CubicTo(_, _, p) => {
+                let p = m.apply(p);
+                // Both ends of a drawn segment are among the flattened points.
+                if last.is_finite() && p.is_finite() {
+                    r.include(last);
+                    r.include(p);
+                }
+                last = p;
+            }
+            PathCmd::Close => last = start,
+        }
+    }
+    r.min.x <= surface.x0 as f32 && r.min.y <= surface.y0 as f32 && r.max.x >= surface.x1 as f32 && r.max.y >= surface.y1 as f32
+}
+
+/// Takes out of each closed polygon the points between two neighbours when all three are
+/// above, below or to the right of `surface` ([`unseen`]): the two edges at such a point add
+/// nothing to any pixel, and neither does the one edge that replaces them, so the pixels are
+/// the same to the last bit with fewer edges to walk. One place at a time: a chord between two
+/// points above the surface is above it, but not one from above it to its right.
+fn drop_unseen(polys: &mut [Vec<Vec2>], surface: IRect) {
+    let (top, bottom, right) = (surface.y0 as f32, surface.y1 as f32, surface.x1 as f32);
+    let places: [&dyn Fn(&Vec2) -> bool; 3] = [&|p| p.y <= top, &|p| p.y >= bottom, &|p| p.x >= right];
+    let mut inside: Vec<bool> = Vec::new();
+    for poly in polys.iter_mut() {
+        for place in places {
+            inside.clear();
+            inside.extend(poly.iter().map(place));
+            if !inside.windows(3).any(|w| w.iter().all(|b| *b)) {
+                continue;
+            }
+            let mut i = 0usize;
+            poly.retain(|_| {
+                let at = i;
+                i += 1;
+                !(at > 0 && inside.get(at - 1..at + 2).is_some_and(|w| w.iter().all(|b| *b)))
+            });
+        }
+    }
+}
+
 /// Turns a display item into fill operations (fill, then stroke), or none when culled. `soft`:
 /// the item is a soft mask's artwork, prepared with its paints like any artwork (still marked
-/// as mask artwork).
-fn prepare(item: &DisplayItem, view: &Affine, surface: IRect, soft: bool) -> Vec<Prepared> {
+/// as mask artwork). `cut`: what can't reach a pixel is left out ([`unseen`]); off, the item is
+/// prepared whole, for the tests that show the pixels are the same.
+fn prepare(item: &DisplayItem, view: &Affine, surface: IRect, soft: bool, cut: bool) -> Vec<Prepared> {
     let mut out = Vec::new();
     let m = view.mul(&item.transform);
     if !m.is_finite() {
@@ -822,7 +904,19 @@ fn prepare(item: &DisplayItem, view: &Affine, surface: IRect, soft: bool) -> Vec
     if bounds.is_empty() || bounds.intersect(&surface_rect).is_empty() {
         return out;
     }
-    let lines = item.path.flatten(&m, TOLERANCE);
+    // Zoomed far into a large filled shape (a drawing merged from many brush strokes), nearly
+    // all of its curves are off the surface: those above, below or right of it become one line
+    // each instead of being cut into pieces nobody sees (ADR 0132). Only where that provably
+    // changes nothing: a fill alone (a stroke's dashes and width follow the length along the
+    // whole line), not a hairline, and a path that spans the surface (see `spans`).
+    let outlined = item.outline.is_some() && item.masks.is_none();
+    let filled_only = !outlined && (is_mask || item.stroke.is_none());
+    let lines = if cut && filled_only && spans(&item.path, &m, surface) {
+        let far = far(surface);
+        item.path.flatten_with(&m, TOLERANCE, |hull| hull.iter().all(|p| p.is_finite()) && unseen(hull, surface, far))
+    } else {
+        item.path.flatten(&m, TOLERANCE)
+    };
     if lines.is_empty() {
         return out;
     }
@@ -851,11 +945,15 @@ fn prepare(item: &DisplayItem, view: &Affine, surface: IRect, soft: bool) -> Vec
         }
         return out;
     }
-    let mut push = |polys: Vec<Vec<Vec2>>, rule, shader: Shader| {
+    let mut push = |mut polys: Vec<Vec<Vec2>>, rule, shader: Shader| {
         if shader.is_solid().is_some_and(|c| c[3] <= 0.0) {
             return;
         }
-        if let Some(b) = pixel_bounds(&polys, surface) {
+        // The bounds first, from every point: they place the coverage buffer.
+        if let Some((b, beyond)) = pixel_bounds_of(&polys, surface) {
+            if cut && beyond {
+                drop_unseen(&mut polys, surface);
+            }
             out.push(Prepared { polys, rule, shader, bounds: b, clip, masks, group, layer: None, hairline: false });
         }
     };
@@ -896,6 +994,12 @@ fn prepare(item: &DisplayItem, view: &Affine, surface: IRect, soft: bool) -> Vec
 }
 
 fn pixel_bounds(polys: &[Vec<Vec2>], surface: IRect) -> Option<IRect> {
+    pixel_bounds_of(polys, surface).map(|(b, _)| b)
+}
+
+/// The pixels of `surface` that `polys` can touch, and whether they reach above, below or
+/// right of it (then some of their points may be [`unseen`]).
+fn pixel_bounds_of(polys: &[Vec<Vec2>], surface: IRect) -> Option<(IRect, bool)> {
     let mut r = Rect::EMPTY;
     for p in polys.iter().flatten() {
         r.include(*p);
@@ -909,7 +1013,8 @@ fn pixel_bounds(polys: &[Vec<Vec2>], surface: IRect) -> Option<IRect> {
         x1: (r.max.x.ceil().min(surface.x1 as f32)) as i32,
         y1: (r.max.y.ceil().min(surface.y1 as f32)) as i32,
     };
-    (!b.is_empty()).then_some(b)
+    let beyond = r.min.y <= surface.y0 as f32 || r.max.y >= surface.y1 as f32 || r.max.x >= surface.x1 as f32;
+    (!b.is_empty()).then_some((b, beyond))
 }
 
 /// Composites coverage `cov` (over `b`) of `op` into the band whose first row is `band_y0`,
@@ -954,6 +1059,8 @@ mod nine_slice_tests;
 
 #[cfg(test)]
 mod layer_opacity_tests;
+#[cfg(test)]
+mod cut_tests;
 
 #[cfg(test)]
 mod tests {

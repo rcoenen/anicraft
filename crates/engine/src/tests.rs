@@ -1881,7 +1881,10 @@ fn mask_layers_reveal_hide_pick_and_move_as_a_group() {
     let bg = px(&s, 500, 500);
     assert_eq!(px(&s, 10, 10), bg, "masked away");
     assert_ne!(px(&s, 60, 60), bg, "revealed");
-    run(&mut s, "layer.toggle_lock", json!({"layer": mask.0}));
+    // A new mask is locked, as Animate leaves it (#429): its edge stays off the stage and its
+    // shapes can't be picked until it is unlocked.
+    assert_eq!(r["locked"], true);
+    assert!(s.timeline().layer(mask).is_some_and(|l| l.locked));
     assert_eq!(s.hit_test(Vec2::new(10.0, 10.0), 0.0), None);
     assert_eq!(s.hit_test(Vec2::new(60.0, 60.0), 0.0).map(|(l, _)| l), Some(art));
 

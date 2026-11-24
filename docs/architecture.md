@@ -240,7 +240,9 @@ engine itself never depends on the GPU.
   state makes the document clean. See [ADR 0001](adr/0001-undo-persistent-snapshots.md).
 * `RenderService` renders frames on a worker thread with an LRU frame cache keyed by
   `(state, frame, view)`, and prefetches during playback. See
-  [ADR 0002](adr/0002-render-pipeline.md).
+  [ADR 0002](adr/0002-render-pipeline.md). The cache keeps the pictures of the document state
+  and zoom on screen and of the one before, within its byte budgets, and draws what the
+  screen needs before look-ahead ([ADR 0132](adr/0132-memory-and-frame-time-stay-flat.md)).
 * `CommandSpec { id, label, menu, shortcut, params, run }`. `run(&mut Session, &Value) ->
   Result<Value, EngineError>`. The registry (`commands()`) is the single list the shell, CLI and
   agents read. `Session::execute(id, params)` handles undo snapshots for mutating commands.
@@ -293,7 +295,9 @@ another language.
 
 The stage is drawn in tiles by the engine's `RenderService`: on the graphics card by default
 (section 4, "GPU stage"), and by the CPU renderer when there is no usable card, in the web
-build, and for anything the GPU can't draw. Tiles are cached per `(state, frame, view)`.
+build, and for anything the GPU can't draw. Tiles are cached per `(state, frame, view)`; a
+zoom that is still changing scales the tiles on screen and draws new ones when it rests
+([ADR 0132](adr/0132-memory-and-frame-time-stay-flat.md)).
 Overlays (selection boxes, drag previews, the stage frame) are drawn with the egui painter in
 screen space.
 

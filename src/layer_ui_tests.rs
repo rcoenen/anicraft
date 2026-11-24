@@ -268,3 +268,153 @@ fn brush_settings_come_back_with_the_next_start() {
     assert!(p.paint_brush_tool.is_some_and(|b| b.size <= 2000.0));
     assert!(crate::prefs::Prefs::from_json("{}").brush_tool.is_none());
 }
+
+/// A click with modifier keys held.
+fn click_with(ctx: &egui::Context, app: &mut App, at: Pos2, modifiers: Modifiers) {
+    let step = |app: &mut App, events: Vec<Event>| {
+        let mut all = vec![Event::ModifiersChanged(modifiers)];
+        all.extend(events);
+        let input = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1600.0, 940.0))), events: all, ..Default::default() };
+        ctx.run_ui(input, |ui| app.frame(ui)).textures_delta.clear();
+    };
+    step(app, vec![Event::PointerMoved(at)]);
+    step(app, vec![Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: true, modifiers }]);
+    step(app, vec![Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: false, modifiers }]);
+    settle(ctx, app);
+}
+
+/// The layers selected in the layer list, by name, top down.
+fn picked(app: &App) -> Vec<String> {
+    app.s.picked_layers().iter().filter_map(|id| app.s.timeline().layer(*id)).map(|l| l.name.clone()).collect()
+}
+
+/// #512: Ctrl-click and Shift-click on layer names select several layers, a drag that starts on
+/// one of them moves them all in one undo step, and a plain click is one layer again.
+#[test]
+fn several_layers_are_picked_with_ctrl_and_shift_and_dragged_together() {
+    let (mut app, ctx) = opened();
+    assert_eq!(names(&app), ["Ball", "Star", "Sun", "Hills", "Sky"]);
+    let at = on_name(&app, "Star", 0.5);
+    click(&ctx, &mut app, at);
+    let at = on_name(&app, "Hills", 0.5);
+    click_with(&ctx, &mut app, at, Modifiers::COMMAND);
+    assert_eq!(picked(&app), ["Star", "Hills"]);
+    assert_eq!(app.s.active_layer().map(|l| l.name.as_str()), Some("Star"), "the layer clicked first stays the active one");
+    // Dragged by Hills, the one that is not active: both land under Sky, Star first.
+    let undo_before = app.s.history_len();
+    let (from, to) = (on_name(&app, "Hills", 0.5), on_name(&app, "Sky", 0.8));
+    drag(&ctx, &mut app, from, to);
+    assert_eq!(names(&app), ["Ball", "Sun", "Sky", "Star", "Hills"]);
+    assert_eq!(app.s.history_len(), undo_before + 1, "one step");
+    assert_eq!(picked(&app), ["Star", "Hills"], "still selected where they landed");
+    // Ctrl-click again takes a layer out; Shift-click takes every layer from the active one.
+    let at = on_name(&app, "Hills", 0.5);
+    click_with(&ctx, &mut app, at, Modifiers::COMMAND);
+    assert_eq!(picked(&app), ["Star"]);
+    let at = on_name(&app, "Ball", 0.5);
+    click_with(&ctx, &mut app, at, Modifiers::SHIFT);
+    assert_eq!(picked(&app), ["Ball", "Sun", "Sky", "Star"]);
+    // A drag that starts on a layer outside the selection moves that layer alone.
+    let (from, to) = (on_name(&app, "Hills", 0.5), on_name(&app, "Ball", 0.2));
+    drag(&ctx, &mut app, from, to);
+    assert_eq!(names(&app), ["Hills", "Ball", "Sun", "Sky", "Star"]);
+    assert_eq!(picked(&app), ["Hills"]);
+    let at = on_name(&app, "Sun", 0.5);
+    click(&ctx, &mut app, at);
+    assert_eq!(picked(&app), ["Sun"], "a plain click is one layer again");
+}
+
+/// The sample with the accessibility tree on.
+fn opened_with_tree() -> (App, egui::Context) {
+    let (mut app, ctx) = opened();
+    ctx.enable_accesskit();
+    settle(&ctx, &mut app);
+    (app, ctx)
+}
+
+/// One more frame (with `events`, in a window `height` tall): every named node, or label with
+/// its text, and where it is, in points.
+fn nodes_after(ctx: &egui::Context, app: &mut App, height: f32, events: Vec<Event>) -> Vec<(String, Rect)> {
+    let input = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1600.0, height))), events, ..Default::default() };
+    let mut out = ctx.run_ui(input, |ui| app.frame(ui));
+    out.textures_delta.clear();
+    let ppp = ctx.pixels_per_point();
+    let nodes = out.platform_output.accesskit_update.map(|u| u.nodes).unwrap_or_default();
+    nodes.into_iter().filter_map(|(_, n)| Some((n.label().or(n.value())?.to_string(), n.bounds().map(|b| Rect::from_min_max(pos2(b.x0 as f32, b.y0 as f32) / ppp, pos2(b.x1 as f32, b.y1 as f32) / ppp))?))).collect()
+}
+
+fn named_nodes(ctx: &egui::Context, app: &mut App) -> Vec<(String, Rect)> {
+    nodes_after(ctx, app, 940.0, Vec::new())
+}
+
+/// #523: the "1–9 of 17 layers" count in the layer list's header never lies over the buttons
+/// there: the parenting toggle beside the heading and the eye, padlock and square that head
+/// their columns. In a column too narrow for it the heading carries it instead.
+#[test]
+fn the_layer_count_clears_the_header_buttons() {
+    let (mut app, ctx) = opened_with_tree();
+    for _ in 0..12 {
+        app.run("layer.new", serde_json::json!({}));
+    }
+    for width in [crate::prefs::LAYER_W_DEFAULT, *crate::prefs::LAYER_W_RANGE.start(), *crate::prefs::LAYER_W_RANGE.end()] {
+        app.prefs.timeline_layer_w = width;
+        settle(&ctx, &mut app);
+        let nodes = named_nodes(&ctx, &mut app);
+        let find = |name: &str| nodes.iter().find(|(l, _)| l == name).map(|(_, r)| *r).unwrap_or_else(|| panic!("no {name}"));
+        let (count, at) = nodes.iter().find(|(l, _)| l.ends_with("of 17 layers")).cloned().unwrap_or_else(|| panic!("more layers than rows, and no count at width {width}"));
+        for button in ["Parenting view", "Hide all layers", "Lock all layers", "Show all layers as outlines"] {
+            assert!(!at.intersects(find(button)), "{count:?} at {at:?} is over {button} at {:?} (layer column {width} wide)", find(button));
+        }
+    }
+}
+
+/// #513: the Movie Explorer's list uses the height its pane has. With the dock to itself and
+/// more rows than fit, the last row shown is at the bottom of the pane, not half-way down.
+#[test]
+fn the_movie_explorer_list_reaches_the_bottom_of_its_pane() {
+    use crate::dock::Panel;
+    let (mut app, ctx) = opened_with_tree();
+    for _ in 0..60 {
+        app.run("layer.new", serde_json::json!({}));
+    }
+    crate::movie_explorer::open(&mut app);
+    for p in [Panel::Properties, Panel::Align, Panel::Library, Panel::History, Panel::Swatches, Panel::Colour] {
+        app.dock.close(p);
+    }
+    app.dock_changed();
+    settle(&ctx, &mut app);
+    let pane = app.dock_view.drawn.iter().find(|d| d.first == Panel::MovieExplorer).map(|d| d.rect).expect("the Movie Explorer is docked");
+    assert!(pane.height() > 600.0, "the pane has the dock to itself: {pane:?}");
+    let rows: Vec<Rect> = named_nodes(&ctx, &mut app).into_iter().filter(|(l, r)| l.starts_with("Layer: ") && pane.contains(r.center())).map(|(_, r)| r).collect();
+    let row_h = rows.first().map_or(0.0, |r| r.height());
+    let last = rows.iter().map(|r| r.bottom()).fold(0.0, f32::max);
+    assert!(rows.len() < 60, "more rows than fit, so the list scrolls: {} shown", rows.len());
+    assert!(pane.bottom() - last < 2.0 * row_h, "the list ends at {last}, the pane at {} ({} rows of {row_h})", pane.bottom(), rows.len());
+}
+
+/// #246: a click on the fill square or the stroke square under the tools opens its colour
+/// picker (the stroke's square lies over a corner of the fill's, and each takes its own clicks).
+#[test]
+fn the_fill_and_stroke_squares_open_their_colour_pickers() {
+    for (square, corner, picker) in [("Fill colour", 1.0, "Fill colour picker"), ("Stroke colour", 0.0, "Colour picker")] {
+        let (mut app, ctx) = opened_with_tree();
+        // A window tall enough to show the squares under the last tool.
+        let tall = 1400.0;
+        let mut nodes = Vec::new();
+        for _ in 0..3 {
+            nodes = nodes_after(&ctx, &mut app, tall, Vec::new());
+        }
+        assert!(!nodes.iter().any(|(l, _)| l == picker), "no picker is open yet");
+        let r = nodes.iter().find(|(l, _)| l == square).map(|(_, r)| *r).unwrap_or_else(|| panic!("no {square} square"));
+        assert!(r.bottom() < tall, "the squares are on screen: {r:?}");
+        // The corner of the square that the other one does not cover.
+        let at = pos2(r.left() + 4.0 + (r.width() - 8.0) * corner, r.top() + 4.0 + (r.height() - 8.0) * corner);
+        nodes_after(&ctx, &mut app, tall, vec![Event::PointerMoved(at)]);
+        nodes_after(&ctx, &mut app, tall, vec![button(at, true)]);
+        nodes_after(&ctx, &mut app, tall, vec![button(at, false)]);
+        for _ in 0..3 {
+            nodes = nodes_after(&ctx, &mut app, tall, Vec::new());
+        }
+        assert!(nodes.iter().any(|(l, _)| l == picker), "a click on {square} opens its picker");
+    }
+}

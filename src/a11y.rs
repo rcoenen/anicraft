@@ -415,7 +415,7 @@ mod tests {
     #[test]
     fn the_layer_footer_buttons_fit_and_are_named() {
         let (t, _, _) = tree(|_, _| {});
-        let names = ["New layer", "Delete layer", "New folder above the active layer (move layers in under it with Up and Down)", "Move layer up", "Move layer down"];
+        let names = ["New layer", "Delete layer", "New folder above the active layer (several selected layers go into it)", "Move layer up", "Move layer down"];
         let rects: Vec<egui::accesskit::Rect> = names
             .iter()
             .map(|n| {

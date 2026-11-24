@@ -8,6 +8,11 @@ People who have contributed to AniCraft. The repository starts from one initial 
 * lienatanael-dev: the live control port and its MCP bridge (#216).
 * mypenc: skew in Free Transform (#176).
 * Davit Matchakhelidze (devius): Georgian in the interface, with Noto Sans Georgian (#160).
+* Mex (MMexicann): SVG path data, `Math.round` and `Math.min`/`max` signed zeros, affine inverses, documentation; preset files with a byte-order mark, oversized indices, CLI numbers, guide anchors and the Windows build scripts; the Movie Explorer's height (#513) and the layer count clear of the header buttons (#523).
+* NetterSilver (Silvertree2010): shape tweens that morph a raw shape's line with its fill, dash patterns, colour, easing and script-string parsing; an XFL nested-group regression test; eight-point ovals, smooth anchors that stay smooth when a segment is bent, and non-finite numbers in transforms, paths, scripts and saved files.
+* Mex (MMexicann): SVG path data, `Math.round` and `Math.min`/`max` signed zeros, affine inverses, documentation.
+* NetterSilver (Silvertree2010): shape tweens that morph a raw shape's line with its fill, dash patterns, colour, easing and script-string parsing; an XFL nested-group regression test; Trace Bitmap and Convert to Bitmap (#489).
+* jayzed80: flipped scales in Properties, CLI subcommand help and frame numbering; copy, cut and paste keys on the stage; the frame keys after a click on the ruler (#195).
 * Mex (MMexicann): SVG path data, `Math.round` and `Math.min`/`max` signed zeros, affine inverses, documentation; preset files with a byte-order mark, oversized indices, CLI numbers, guide anchors and the Windows build scripts.
 * NetterSilver (Silvertree2010): shape tweens that morph a raw shape's line with its fill, dash patterns, colour, easing and script-string parsing; an XFL nested-group regression test; eight-point ovals, smooth anchors that stay smooth when a segment is bent, and non-finite numbers in transforms, paths, scripts and saved files; the length of very large vectors, a hex colour form that keeps alpha, and a test for SVG path numbers past `f32` (#142, #233, #130).
 * Mex (MMexicann): SVG path data, `Math.round` and `Math.min`/`max` signed zeros, affine inverses, documentation.

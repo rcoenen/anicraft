@@ -233,7 +233,7 @@ not this table, says what matters most.
 | Feature | Status | Notes |
 |---|---|---|
 | Frames, keyframes, blank keyframes: insert, remove, clear | **done** | [timeline](guide/timeline.md). |
-| Frame selection, drag to move, cut, copy and paste frames | **done** | Open bug: a click on the playhead should act on every layer ([#195](https://github.com/storytold/anicraft/issues/195), outside PR [#222](https://github.com/storytold/anicraft/issues/222), P-009). |
+| Frame selection, drag to move, cut, copy and paste frames | **done** | A click on the ruler leaves no frames selected, so F5 acts on every layer ([#195](https://github.com/storytold/anicraft/issues/195), [ADR 0131](adr/0131-layer-selection-the-ruler-and-new-masks.md)). |
 | Span length by dragging | **done** | [ADR 0083](adr/0083-motion-editor-and-timeline-retiming.md). |
 | Convert to Keyframes | **done** | [#272](https://github.com/storytold/anicraft/issues/272). |
 | Reverse Frames | **missing** | P-021. |
@@ -318,11 +318,11 @@ not this table, says what matters most.
 |---|---|---|
 | Normal layers: add, delete, rename, reorder by drag, show, lock, outline | **done** | [#54](https://github.com/storytold/anicraft/issues/54), [#59](https://github.com/storytold/anicraft/issues/59) and [#61](https://github.com/storytold/anicraft/issues/61) can close. |
 | Layer folders | **done** | |
-| Mask and masked layers | **done** | Open bug: the mask edge shows in the layer colour when it shouldn't ([#429](https://github.com/storytold/anicraft/issues/429), P-009). |
+| Mask and masked layers | **done** | A new mask is locked, as in the reference app, so its edge in the layer colour shows only while it is unlocked for editing ([#429](https://github.com/storytold/anicraft/issues/429), [ADR 0131](adr/0131-layer-selection-the-ruler-and-new-masks.md)). |
 | Soft masks (alpha, luminance) | **ours** | [ADR 0070](adr/0070-soft-masks-and-text-on-a-path.md). |
 | Guide and motion guide layers | **done** | |
 | Layer Properties dialog | **done** | [ADR 0061](adr/0061-timeline-polish.md). One layer at a time (P-027; [#464](https://github.com/storytold/anicraft/issues/464)). |
-| Selecting several layers; acting on them together | **partial** | Open bug [#512](https://github.com/storytold/anicraft/issues/512) (P-009). Dragging several at once is missing. |
+| Selecting several layers; acting on them together | **partial** | Ctrl-click, Shift-click and Shift+Up/Down select; drag, Delete Layer and New Folder act on them all ([#512](https://github.com/storytold/anicraft/issues/512), [ADR 0131](adr/0131-layer-selection-the-ruler-and-new-masks.md)). Missing: the row toggles and Move Layer Up and Down on several layers, Layer Properties for several (P-027). |
 | Layer colour, layer height | **done** | |
 | Layer opacity | **done** | [ADR 0111](adr/0111-the-transformation-point-a-turning-box-and-layer-opacity.md). It shows in exports; an authoring-only transparency is missing. |
 | Layer parenting | **done** | [ADR 0113](adr/0113-layer-parenting.md). |

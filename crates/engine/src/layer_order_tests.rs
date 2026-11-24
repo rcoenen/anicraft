@@ -233,3 +233,119 @@ fn the_buttons_above_the_layers_show_lock_and_outline_every_layer() {
     assert!(s.timeline().layers.iter().filter(|l| l.kind != LayerKind::Camera).all(|l| !l.visible));
     assert!(s.execute("layer.toggle_visible", &json!({"all": "yes"})).is_err());
 }
+
+/// The layers selected in the layer list, by name, top down.
+fn picked(s: &Session) -> Vec<String> {
+    s.picked_layers().iter().filter_map(|id| s.timeline().layer(*id)).map(|l| l.name.clone()).collect()
+}
+
+/// #512: Ctrl-click adds a layer to the selected ones or takes it out, Shift-click takes every
+/// layer from the active one, and the selection never outlives its active layer.
+#[test]
+fn layers_are_selected_together_with_toggle_and_range() {
+    let (mut s, [a, b, c, d, _]) = five();
+    run(&mut s, "layer.select", json!({"layer": b.0}));
+    let r = run(&mut s, "layer.select", json!({"layer": d.0, "add": "range"}));
+    assert_eq!(picked(&s), ["D", "C", "B"]);
+    assert_eq!((r["layer"].as_u64(), r["layers"].as_array().map(Vec::len)), (Some(b.0), Some(3)), "the active layer stays the end the range is counted from");
+    // A second Shift-click counts from the same end, the other way.
+    run(&mut s, "layer.select", json!({"layer": a.0, "add": "range"}));
+    assert_eq!(picked(&s), ["B", "A"]);
+    run(&mut s, "layer.select", json!({"layer": d.0, "add": "toggle"}));
+    run(&mut s, "layer.select", json!({"layer": a.0, "add": "toggle"}));
+    assert_eq!(picked(&s), ["D", "B"]);
+    // The active layer leaves: another selected one becomes active.
+    run(&mut s, "layer.select", json!({"layer": b.0, "add": "toggle"}));
+    assert_eq!((picked(&s), s.layer), (vec!["D".to_string()], d));
+    // The last one stays: there is always an active layer.
+    run(&mut s, "layer.select", json!({"layer": d.0, "add": "toggle"}));
+    assert_eq!((picked(&s), s.layer), (vec!["D".to_string()], d));
+    // A plain click is that layer alone, and so is whatever makes another layer active.
+    run(&mut s, "layer.select", json!({"layer": c.0, "add": "toggle"}));
+    run(&mut s, "layer.select", json!({"layer": d.0}));
+    assert_eq!(picked(&s), ["D"]);
+    run(&mut s, "layer.select", json!({"layer": c.0, "add": "toggle"}));
+    new_layer(&mut s, "F");
+    assert_eq!(picked(&s), ["F"]);
+    assert!(s.execute("layer.select", &json!({"layer": a.0, "add": "sideways"})).is_err());
+}
+
+/// #512: the selected layers move as one, landing together in the order they had, wherever the
+/// drop is: above a layer, below one, on one of themselves, in a folder, or at the bottom.
+#[test]
+fn selected_layers_move_together_and_keep_their_order() {
+    let (mut s, [a, b, c, d, e]) = five();
+    run(&mut s, "layer.select", json!({"layer": b.0}));
+    run(&mut s, "layer.select", json!({"layer": d.0, "add": "toggle"}));
+    // No `layer`: the selected ones.
+    let r = run(&mut s, "layer.move", json!({"before": e.0}));
+    assert_eq!(stack(&s), ["D", "B", "E", "C", "A"]);
+    assert_eq!((r["index"].as_u64(), r["moved"].as_u64()), (Some(0), Some(2)));
+    s.undo().unwrap();
+    assert_eq!(stack(&s), ["E", "D", "C", "B", "A"], "one undo step");
+    run(&mut s, "layer.move", json!({"layers": [b.0, d.0], "after": a.0}));
+    assert_eq!(stack(&s), ["E", "C", "A", "D", "B"]);
+    s.undo().unwrap();
+    // Dropped on one of themselves: the others gather around it, still in order.
+    run(&mut s, "layer.move", json!({"layers": [e.0, c.0], "after": c.0}));
+    assert_eq!(stack(&s), ["D", "E", "C", "B", "A"]);
+    s.undo().unwrap();
+    run(&mut s, "layer.move", json!({"layers": [e.0, c.0], "before": c.0}));
+    assert_eq!(stack(&s), ["D", "E", "C", "B", "A"]);
+    s.undo().unwrap();
+    run(&mut s, "layer.move", json!({"layers": [d.0, b.0]}));
+    assert_eq!(stack(&s), ["E", "C", "A", "D", "B"]);
+    s.undo().unwrap();
+    // Into a folder; a folder selected with a layer inside it moves once, with the layer.
+    run(&mut s, "layer.select", json!({"layer": e.0}));
+    let f = new_folder(&mut s, "F");
+    run(&mut s, "layer.move", json!({"layers": [a.0, c.0], "into": f.0}));
+    assert_eq!(stack(&s), ["F", ".C", ".A", "E", "D", "B"]);
+    run(&mut s, "layer.move", json!({"layers": [f.0, a.0, b.0]}));
+    assert_eq!(stack(&s), ["E", "D", "F", ".C", ".A", "B"]);
+    // A folder can't go into itself, and then nothing moves.
+    let before = stack(&s);
+    assert!(s.execute("layer.move", &json!({"layers": [e.0, f.0], "into": f.0})).is_err());
+    assert_eq!(stack(&s), before);
+}
+
+/// #512: New Folder with several layers selected puts them in the folder, where the top one
+/// was; one undo step. With one layer selected the folder is empty, as before.
+#[test]
+fn new_folder_takes_the_selected_layers() {
+    let (mut s, [_, b, _, d, _]) = five();
+    run(&mut s, "layer.select", json!({"layer": b.0}));
+    run(&mut s, "layer.select", json!({"layer": d.0, "add": "range"}));
+    let r = run(&mut s, "layer.new_folder", json!({"name": "F"}));
+    assert_eq!(stack(&s), ["E", "F", ".D", ".C", ".B", "A"]);
+    assert_eq!(r["wrapped"], 3);
+    assert_eq!(picked(&s), ["F"], "the folder is the active layer");
+    s.undo().unwrap();
+    assert_eq!(stack(&s), ["E", "D", "C", "B", "A"]);
+    // Asked not to: an empty folder above the active layer.
+    run(&mut s, "layer.select", json!({"layer": b.0}));
+    run(&mut s, "layer.select", json!({"layer": d.0, "add": "toggle"}));
+    run(&mut s, "layer.new_folder", json!({"name": "G", "wrap": false}));
+    assert_eq!(stack(&s), ["E", "D", "C", "G", "B", "A"]);
+}
+
+/// #512: Delete Layer takes every selected layer in one undo step, asks once for all of them,
+/// and refuses as a whole when no layer to draw on would be left.
+#[test]
+fn delete_takes_every_selected_layer() {
+    let (mut s, [a, b, c, d, e]) = five();
+    run(&mut s, "draw.rect", json!({"x": 0, "y": 0, "w": 10, "h": 10}));
+    run(&mut s, "layer.select", json!({"layer": b.0}));
+    run(&mut s, "layer.select", json!({"layer": e.0, "add": "toggle"}));
+    let ask = s.confirmation("layer.delete", &json!({})).expect("E holds a rectangle");
+    assert!(ask.message.contains("2 layers"), "{}", ask.message);
+    let r = run(&mut s, "layer.delete", json!({}));
+    assert_eq!(stack(&s), ["D", "C", "A"]);
+    assert_eq!(r["layers"], 2);
+    assert!(s.timeline().layer(s.layer).is_some(), "a layer that is still there is active");
+    s.undo().unwrap();
+    assert_eq!(stack(&s), ["E", "D", "C", "B", "A"]);
+    let all = [a.0, b.0, c.0, d.0, e.0];
+    assert!(s.execute("layer.delete", &json!({"layers": all})).is_err());
+    assert_eq!(stack(&s), ["E", "D", "C", "B", "A"], "all or none");
+}

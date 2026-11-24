@@ -444,6 +444,14 @@ impl Path {
     /// Flattens under `m` into polylines whose deviation from the true curve is at most
     /// `tolerance` (in output units). Non-finite points are dropped.
     pub fn flatten(&self, m: &Affine, tolerance: f32) -> Vec<Polyline> {
+        self.flatten_with(m, tolerance, |_| false)
+    }
+
+    /// [`Path::flatten`], except that a curve `chord` says yes to becomes one line to its end
+    /// point. `chord` is given the curve's control points under `m`, its start first (three for
+    /// a quadratic, four for a cubic); a curve lies inside their hull. For a caller that knows
+    /// where the shape of a curve can't matter (a renderer, far outside its surface).
+    pub fn flatten_with(&self, m: &Affine, tolerance: f32, chord: impl Fn(&[Vec2]) -> bool) -> Vec<Polyline> {
         let tol = if tolerance.is_finite() && tolerance > 1e-4 { tolerance } else { 0.1 };
         let mut out: Vec<Polyline> = Vec::new();
         let mut cur = Polyline::default();
@@ -480,7 +488,7 @@ impl Path {
                         push_finite(&mut cur.points, last);
                     }
                     let dd = (last - c1 * 2.0 + p).length();
-                    let n = segments(0.25 * dd, tol);
+                    let n = if chord(&[last, c1, p]) { 1 } else { segments(0.25 * dd, tol) };
                     for i in 1..=n {
                         let t = i as f32 / n as f32;
                         let mt = 1.0 - t;
@@ -495,7 +503,7 @@ impl Path {
                         push_finite(&mut cur.points, last);
                     }
                     let dd = (last - c1 * 2.0 + c2).length().max((c1 - c2 * 2.0 + p).length());
-                    let n = segments(0.75 * dd, tol);
+                    let n = if chord(&[last, c1, c2, p]) { 1 } else { segments(0.75 * dd, tol) };
                     for i in 1..=n {
                         let t = i as f32 / n as f32;
                         let mt = 1.0 - t;

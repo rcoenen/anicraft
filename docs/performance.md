@@ -47,6 +47,51 @@ The default `bench` scenario: 50 layers × 200 shapes × 240 frames, 200k elemen
 | GPU stage, 50k shapes at 4K, one texture | < 33.3 ms | 22.5–23.8 ms ✅ | `gpu_bench --check` |
 | GPU stage, onion ±5 outlines / tinted at 1080p, stage tiles | ≤ 1.25 | 1.03–1.06 ✅ | `gpu_bench --check` |
 
+**Memory and frame time stay flat (2026-11-23, P-004, ADR 0132; #314, #477).** Measured
+before changing anything, then after, on the same machine (release, 32 threads).
+
+*What the picture cache holds.* A drag makes a new document state on every pointer move, a
+zoom gesture a new zoom level on every frame, and each one's tiles used to stay until the
+768 MB budget (256 MB in the web build) was full.
+
+| Scenario | Before | After |
+|---|---|---|
+| Web build in Node (`tests/wasm.rs`): WebAssembly memory over a drag of 120 moves, a 1024 × 512 view | 27 MB to 255 MB (the cache at 240 MB) | 27 MB throughout (the cache at 4 MB) |
+| Desktop, Ctrl+wheel from fit to 6400 % (84 frames): pictures cached | 147 pictures, 136 MB | 44 pictures, 44 MB (the view and the ring around it, at this zoom and the one before) |
+| Desktop, a drag of 300 moves in a 1600 × 940 window: pictures cached, textures, process memory | not run; by the sizes below a move adds a view of about 12 MB, so the 768 MB budget is full after some 60 moves | 42 pictures (38 MB), 12 textures, the process at 102 MB |
+| Desktop, the sample's 48 frames played five times in that window | the budget | the same: 768 MB of pictures after the first lap and after the fifth (the movie at this size is larger than the budget), 192 textures, the process at 814 to 826 MB |
+
+*A stage view at each zoom*, 1600 × 900 in 512 px tiles on the CPU oracle, a drawing of 64
+brush strokes merged into three shapes
+(`cargo test --release -p anicraft-engine --lib stage_timings -- --ignored --nocapture`):
+
+| Zoom | Tiles | Edges walked, before | after | Prepare, before | after | One thread (as the browser draws), before | after | 32 threads, before | after |
+|---|---|---|---|---|---|---|---|---|---|
+| 100 % | 6 | 42,708 | 21,935 | 1.27 ms | 1.41 ms | 9.0 ms | 8.1 ms | 2.8 ms | 2.9 ms |
+| 400 % | 12 | 133,288 | 31,317 | 2.94 ms | 2.08 ms | 31.7 ms | 23.3 ms | 8.0 ms | 8.3 ms |
+| 1600 % | 12 | 226,884 | 22,901 | 3.67 ms | 2.14 ms | 34.4 ms | 20.1 ms | 8.7 ms | 7.9 ms |
+| 6400 % | 8 | 281,304 | 13,416 | 3.34 ms | 1.32 ms | 33.5 ms | 13.0 ms | 6.7 ms | 6.2 ms |
+
+Before, a tile walked every edge of every shape that touched it, cut finer the deeper the
+zoom; now the parts of a fill above, below and right of the tile are left out, and the
+pictures are the same to the last bit (`render::cut_tests` compares the float pixmaps). On one
+thread a tile at 6400 % costs what a tile at 100 % costs (1.6 ms against 1.4 ms; it was 4.2 ms
+against 1.5 ms). With 512 strokes the same view went from 25.1 ms to 12.0 ms on one thread.
+
+*Frame time during a zoom gesture.* The stage asks for nothing while the zoom is changing, so
+a frame of the gesture costs the interface alone (0.7 ms on the desktop, at every zoom up to 6400 %). In the
+browser each of those frames used to draw the whole view on the interface's thread: 9 to
+34 ms for the drawing above.
+
+Playing is bounded by the budget, not by this change: uncompressed, a 1600 × 940 view is
+about 12 MB a frame, so a movie of some 60 frames fills 768 MB. Storing flat and repeated
+tiles once is the next step (P-004 in the roadmap).
+
+The checks are relations, not timings (`engine::render_budget_tests`,
+`stage_budget_tests`, `render::cut_tests`, `tests/wasm.rs`): a long drag or zoom holds what a
+short one holds, playing longer adds nothing, a deep tile walks fewer edges than the whole
+drawing has at 100 %, and what the screen needs is drawn before look-ahead.
+
 **1080p render, back under budget (2026-11-06).** It had drifted to 19.4–20.2 ms (v0.1.0
 measured 18.0–18.9 ms on the same machine; the 16.5 ms of 2026-10-28 didn't reproduce).
 Timing each step of a frame showed the time was outside the drawing itself:

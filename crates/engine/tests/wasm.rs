@@ -133,3 +133,64 @@ fn exports_and_reimports_svg_and_lottie_in_memory() {
     assert!(lottie["layers"].as_array().is_some_and(|l| !l.is_empty()));
     assert!(lottie_bytes.windows(5).any(|w| w == b"\"a\":1"));
 }
+
+/// Pages of this module's memory, which only ever grows: what a browser tab is charged for.
+fn memory_mb() -> f64 {
+    core::arch::wasm32::memory_size(0) as f64 * 65536.0 / 1048576.0
+}
+
+/// #314 in the browser itself (P-004, ADR 0132): a long drag is a new document state on every
+/// pointer move. The stage says which state it shows, so the pictures of the states before go
+/// and the module's memory stops growing after the first moves; before, every state's pictures
+/// stayed until the cache's whole budget was in use. A view also fills in a step at a time
+/// when it is asked for within a budget, since there is no thread to draw it.
+#[wasm_bindgen_test]
+fn a_long_drag_does_not_grow_the_memory() {
+    use anicraft_engine::geom::Affine;
+    use anicraft_engine::render::View;
+    let mut s = Session::new(anicraft_engine::doc::sample::demo());
+    s.execute("edit.select_all", &json!({})).unwrap();
+    let svc = RenderService::new(256 << 20, None);
+    assert!(!svc.has_thread());
+    // A 1024 × 512 view of the stage in two tiles, as the stage cuts it.
+    let tiles = |s: &Session| -> Vec<_> {
+        (0..2).map(|tx| svc.job(s.state, &s.doc, 0, View { transform: Affine::translate(-512.0 * tx as f32, 0.0), width: 512, height: 512, background: Some(s.doc.stage.background) }, None)).collect()
+    };
+    let drag = |s: &mut Session, moves: u32, show: bool| {
+        let started = web_time::Instant::now();
+        for i in 0..moves {
+            s.execute("element.translate", &json!({"dx": if i % 2 == 0 { 2 } else { -2 }, "dy": 0})).unwrap();
+            let jobs = tiles(s);
+            if show {
+                svc.show(jobs[0].set);
+            }
+            assert!(svc.request_batch(jobs).iter().all(Option::is_some));
+        }
+        started.elapsed().as_secs_f64() * 1000.0 / f64::from(moves)
+    };
+    let start = memory_mb();
+    drag(&mut s, 12, true);
+    let early = memory_mb();
+    let ms = drag(&mut s, 120, true);
+    let late = memory_mb();
+    wasm_bindgen_test::console_log!("drag, the shown state kept: {start:.0} MB at the start, {early:.0} MB after 12 moves, {late:.0} MB after 132; {ms:.1} ms a move; cache {:.0} MB", svc.cache_stats().1 as f64 / 1048576.0);
+    assert!(late <= early + 8.0, "memory grew from {early} MB to {late} MB over 120 more moves");
+    assert!(svc.cache_stats().0 <= 4, "two states of two tiles");
+    // Fills in a step at a time within a budget.
+    s.execute("element.translate", &json!({"dx": 1, "dy": 0})).unwrap();
+    let jobs = tiles(&s);
+    svc.show(jobs[0].set);
+    let first = svc.request_batch_within(jobs.clone(), std::time::Duration::ZERO);
+    assert_eq!(first.iter().filter(|i| i.is_some()).count(), 1);
+    assert!(svc.request_batch_within(jobs, std::time::Duration::ZERO).iter().all(Option::is_some));
+    // As it was before (every state's pictures kept): the same drag again without saying
+    // what is shown. Printed for docs/performance.md, not checked.
+    let svc_before = RenderService::new(256 << 20, None);
+    let before = memory_mb();
+    for i in 0..120 {
+        s.execute("element.translate", &json!({"dx": if i % 2 == 0 { 2 } else { -2 }, "dy": 0})).unwrap();
+        let jobs: Vec<_> = (0..2).map(|tx| svc_before.job(s.state, &s.doc, 0, View { transform: Affine::translate(-512.0 * tx as f32, 0.0), width: 512, height: 512, background: Some(s.doc.stage.background) }, None)).collect();
+        svc_before.request_batch(jobs);
+    }
+    wasm_bindgen_test::console_log!("drag, every state kept (before): {before:.0} MB to {:.0} MB over 120 moves; cache {:.0} MB", memory_mb(), svc_before.cache_stats().1 as f64 / 1048576.0);
+}

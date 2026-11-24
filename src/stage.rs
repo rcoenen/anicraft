@@ -5,6 +5,13 @@
 //! frame asks for the visible tiles as one batch (plus a one-tile margin as look-ahead), keeps
 //! finished tiles as textures, and draws any older tiles that cover a gap (previous zoom or
 //! state, scaled) underneath, so panning and zooming never reveal an empty stage.
+//!
+//! Memory and frame time stay flat (ADR 0132). The pictures of a document state and zoom that
+//! are no longer on screen go as soon as the view is drawn again, here and in the render
+//! service. While the zoom is changing (a pinch, Ctrl+wheel) nothing new is drawn: every frame
+//! of it is a zoom level nobody will look at, so the pictures on screen are scaled until the
+//! zoom rests. With no render thread (the browser) moving around the stage draws for at most
+//! `INLINE_BUDGET` of a frame.
 
 use crate::app::{App, Drag, Tool, XfKind};
 use crate::prefs::RenderMode;
@@ -27,10 +34,15 @@ const IMMEDIATE_BUDGET_MS: f32 = 12.0;
 pub const TILE: u32 = 512;
 /// Tile textures kept on the GPU (≈ 1 MB each); least recently used ones are dropped.
 const MAX_TILE_TEXTURES: usize = 192;
+/// With no render thread (the browser): the most of one frame spent drawing tiles while
+/// moving around the stage. The rest of the view arrives over the next frames.
+const INLINE_BUDGET: std::time::Duration = std::time::Duration::from_millis(8);
 
 /// A finished tile on the GPU.
 struct TileTex {
     key: u64,
+    /// The picture set it is of (a document state at a zoom, ADR 0132).
+    set: u64,
     /// Stage-space rectangle `[x0, y0, x1, y1]` this tile covers.
     rect: [f32; 4],
     tex: TileImage,
@@ -65,6 +77,11 @@ pub struct Cache {
     pub service: Option<RenderService>,
     /// Document state of the picture on screen (an edit makes it differ).
     pub shown_state: Option<anicraft_engine::StateId>,
+    /// Movie frame of the picture on screen (playing or scrubbing makes it differ).
+    shown_frame: Option<u32>,
+    /// The device scale the stage was laid out at last frame: while it differs from this
+    /// frame's the zoom is still changing, and no tiles are asked for.
+    last_scale: Option<f32>,
     /// The GPU stage (ADR 0019), when this build has it and Preferences ask for it.
     pub gpu: crate::gpu_stage::GpuStage,
     /// Who drew the newest visible tiles: the GPU, or the CPU and why (status bar).
@@ -75,7 +92,7 @@ pub struct Cache {
 
 impl Default for Cache {
     fn default() -> Self {
-        Cache { tiles: Vec::new(), tick: 0, ms: 0.0, ready: (0, 0), canvas: Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0)), laid_out: false, service: None, shown_state: None, gpu: Default::default(), drawn_by: None, pattern: None }
+        Cache { tiles: Vec::new(), tick: 0, ms: 0.0, ready: (0, 0), canvas: Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0)), laid_out: false, service: None, shown_state: None, shown_frame: None, last_scale: None, gpu: Default::default(), drawn_by: None, pattern: None }
     }
 }
 
@@ -95,6 +112,8 @@ impl Cache {
     pub fn forget_document(&mut self) {
         self.tiles.clear();
         self.shown_state = None;
+        self.shown_frame = None;
+        self.last_scale = None;
         self.ready = (0, 0);
         if let Some(s) = &self.service {
             s.forget_pictures();
@@ -139,7 +158,7 @@ impl Cache {
             }
         };
         self.tick += 1;
-        self.tiles.push(TileTex { key: img.key, rect, tex, used: self.tick });
+        self.tiles.push(TileTex { key: img.key, set: img.set, rect, tex, used: self.tick });
         // Evict least recently used tiles that are not on screen.
         while self.tiles.len() > MAX_TILE_TEXTURES {
             let victim = self.tiles.iter().enumerate().filter(|(_, t)| !keep.contains(&t.key)).min_by_key(|(_, t)| t.used).map(|(i, _)| i);
@@ -1051,8 +1070,24 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         let jobs: Vec<(TileSpec, FrameJob)> = visible.into_iter().map(|t| { let j = make_job_for(raster, state, &pic.doc, pic.frame, t.view, onion).through_camera(preview).inside(pic.front.clone()).with_reference(reference.clone()); (t, j) }).collect();
         let keys: Vec<u64> = jobs.iter().map(|(_, j)| j.key).collect();
         let missing: Vec<usize> = (0..jobs.len()).filter(|&i| !app.stage_cache.has(keys[i])).collect();
+        let set = jobs.first().map(|(_, j)| j.set);
+        // A zoom that is still changing draws nothing new: this frame's zoom level is gone by
+        // the next, so its tiles would never be looked at (and in the browser they would be
+        // drawn inside this frame). The pictures on screen are scaled until the zoom rests,
+        // one frame from now at the soonest.
+        let zooming = app.stage_cache.last_scale.is_some_and(|was| was != z);
+        app.stage_cache.last_scale = Some(z);
+        if zooming {
+            ui.ctx().request_repaint();
+        } else if let (Some(set), Some(svc)) = (set, &app.stage_cache.service) {
+            // The picture set on screen (this state at this zoom): the render service keeps it
+            // and the one before, and lets the pictures of every other go (ADR 0132). A zoom
+            // level passed through on the way is not one of them.
+            svc.show(set);
+        }
 
         if !missing.is_empty()
+            && !zooming
             && let Some(svc) = &app.stage_cache.service
         {
             // Latency vs throughput (ADR 0006): an edit (the document changed under the picture
@@ -1069,8 +1104,18 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     RenderMode::Auto => app.stage_cache.ms <= IMMEDIATE_BUDGET_MS,
                 };
             let batch: Vec<FrameJob> = missing.iter().map(|&i| jobs[i].1.clone()).collect();
+            // Moving around the picture already on screen (a pan, a zoom come to rest): with
+            // no render thread the tiles come a few a frame, nearest the centre first, so the
+            // frame stays short. An edit or another frame is one whole picture, drawn at once.
+            let moving = app.stage_cache.shown_state == Some(state) && app.stage_cache.shown_frame == Some(pic.frame);
             let started = web_time::Instant::now();
-            let results: Vec<Option<std::sync::Arc<FrameImage>>> = if immediate { svc.render_now_batch(batch).into_iter().map(Some).collect() } else { svc.request_batch(batch) };
+            let results: Vec<Option<std::sync::Arc<FrameImage>>> = if immediate {
+                svc.render_now_batch(batch).into_iter().map(Some).collect()
+            } else if moving {
+                svc.request_batch_within(batch, INLINE_BUDGET)
+            } else {
+                svc.request_batch(batch)
+            };
             let wall = started.elapsed().as_secs_f32() * 1000.0;
             let mut ms = 0.0f32;
             let mut error = None;
@@ -1103,11 +1148,20 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         app.stage_cache.ready = (ready, keys.len());
         if ready == keys.len() {
             app.stage_cache.shown_state = Some(state);
+            app.stage_cache.shown_frame = Some(pic.frame);
+            // The view is whole: tiles of other states and zooms were only standing in for
+            // it, so their textures go now instead of when 192 newer ones have pushed them out.
+            if let Some(set) = set {
+                app.stage_cache.tiles.retain(|t| t.set == set);
+            }
+        } else if !zooming && app.stage_cache.service.as_ref().is_some_and(|s| !s.has_thread()) {
+            // No render thread tells us when the rest is ready: it is drawn next frame.
+            ui.ctx().request_repaint();
         }
 
         // Look-ahead: the ring of tiles around the view (a pan reveals them instantly) and,
         // during playback, the next frames' visible tiles.
-        if let Some(svc) = &app.stage_cache.service {
+        if let Some(svc) = app.stage_cache.service.as_ref().filter(|_| !zooming) {
             let mut ahead: Vec<FrameJob> = Vec::new();
             if app.playing && !editing {
                 let n = app.s.frame_count().max(1);
