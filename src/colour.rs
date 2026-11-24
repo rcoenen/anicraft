@@ -247,11 +247,17 @@ pub fn popup_for(ui: &egui::Ui, anchor: &Response, popup: Id, c: &mut [u8; 4], a
     changed
 }
 
-/// Names a picker popup for screen readers: a dialog holding the picker's controls.
+/// Names a picker popup for screen readers: a dialog holding the picker's controls. `r` is the
+/// popup's response. Since egui 0.37 the node that holds the controls is the popup's own Ui,
+/// whose id is its layer's; egui calls it a menu and gives it no
+/// bounds, so a screen reader could not show where it is.
 pub(crate) fn name_popup(r: &Response, name: &str) {
-    r.ctx.accesskit_node_builder(r.id, |node| {
+    let ppp = f64::from(r.ctx.pixels_per_point());
+    let b = r.rect;
+    r.ctx.accesskit_node_builder(r.layer_id.id, |node| {
         node.set_role(egui::accesskit::Role::Dialog);
         node.set_label(name);
+        node.set_bounds(egui::accesskit::Rect { x0: f64::from(b.min.x) * ppp, y0: f64::from(b.min.y) * ppp, x1: f64::from(b.max.x) * ppp, y1: f64::from(b.max.y) * ppp });
     });
 }
 
