@@ -5,7 +5,7 @@ use crate::icons::{self, Icon};
 use crate::theme::{Section, T, TARGET, TOOL_BUTTON, TOOL_ICON, Type, color, section, text, to_color32, with_type};
 use anicraft_engine::doc::{ColorEffect, ColorStyle, ElementKind, LibraryItem, LineType, MAX_PATH_OFFSET, Paint, Rgba, SymbolKind, TextKind, evaluate_layer_elements};
 use crate::a11y::{self, Named};
-use egui::{Color32, Rect, Sense, Stroke, StrokeKind, WidgetType, pos2, vec2};
+use egui::{Color32, Rect, Sense, Stroke, StrokeKind, Role, pos2, vec2};
 use serde_json::{Value, json};
 
 // ----- tools --------------------------------------------------------------------------------
@@ -104,7 +104,7 @@ fn tool_items(app: &mut App, ui: &mut egui::Ui, area: Rect, flow: ToolFlow) {
         let (rect, resp) = ui.allocate_exact_size(vec2(TOOL_BUTTON, TOOL_BUTTON), Sense::click());
         #[cfg(test)]
         if tool == Tool::Hand {
-            ui.ctx().data_mut(|data| data.insert_temp(egui::Id::new("test_hand_tool_rect"), rect));
+            ui.ctx().data_mut(|data| data.insert_temp(egui::Id::unique("test_hand_tool_rect"), rect));
         }
         let active = app.tool == tool;
         // The active tool sits on a lighter gray block with a white icon; the rest are a
@@ -121,7 +121,7 @@ fn tool_items(app: &mut App, ui: &mut egui::Ui, area: Rect, flow: ToolFlow) {
         icons::paint(ui.painter(), Rect::from_center_size(rect.center(), vec2(TOOL_ICON, TOOL_ICON)), tool_icon(tool), tint);
         // "Pen tool (P)": what the tooltip says first, and what a screen reader says.
         let name = a11y::with_key(&tr!("{tool} tool", tool = crate::i18n::t(tool.label())), app.keymap.primary(crate::keymap::tool_id(tool)));
-        a11y::control(ui, &resp, WidgetType::Button, &name, Some(active));
+        a11y::control(ui, &resp, Role::Button, &name, Some(active));
         if active {
             a11y::anchor(ui, a11y::Region::Tools, area, &resp);
         }
@@ -176,7 +176,7 @@ fn tool_items(app: &mut App, ui: &mut egui::Ui, area: Rect, flow: ToolFlow) {
     let tint = if on { T.on_active } else if resp.hovered() { T.icon_hot } else { T.icon };
     icons::paint(ui.painter(), Rect::from_center_size(rect.center(), vec2(TOOL_ICON, TOOL_ICON)), Icon::Magnet, tint);
     let name = a11y::with_key(tr!("Snap to Objects"), app.keymap.primary("draw.snap_to_objects"));
-    a11y::control(ui, &resp, WidgetType::Checkbox, &name, Some(on));
+    a11y::control(ui, &resp, Role::CheckBox, &name, Some(on));
     let resp = resp.on_hover_text(if on { tr!("{name}: on
 Dragged points and selections snap to points, lines and fill edges within 10 pixels.", name = name) } else { tr!("{name}: off
 Dragged points and selections snap to points, lines and fill edges within 10 pixels.", name = name) });
@@ -195,8 +195,8 @@ fn tool_swatches(app: &mut App, ui: &mut egui::Ui) {
     let back = Rect::from_min_size(r.left_top() + vec2(14.0, 14.0), vec2(24.0, 24.0));
     let front = Rect::from_min_size(r.left_top() + vec2(2.0, 2.0), vec2(24.0, 24.0));
     // The fill first, so the stroke's frame (on top) takes the clicks where they overlap.
-    let fill_resp = ui.interact(back, ui.id().with("tool_fill"), Sense::click());
-    let stroke_resp = ui.interact(front, ui.id().with("tool_stroke"), Sense::click());
+    let fill_resp = ui.interact(back, ui.scope_id().with("tool_fill"), Sense::click());
+    let stroke_resp = ui.interact(front, ui.scope_id().with("tool_stroke"), Sense::click());
     let st = &app.s.style;
     let hot = |r: &egui::Response| if r.hovered() { T.selection } else { T.border };
     ui.painter().rect_filled(back, T.rc(), if st.use_fill { to_color32(st.fill) } else { T.field });
@@ -206,7 +206,7 @@ fn tool_swatches(app: &mut App, ui: &mut egui::Ui) {
     ui.painter().rect_stroke(front, T.rc(), Stroke::new(1.0, hot(&stroke_resp)), StrokeKind::Inside);
     for (fill, resp) in [(true, fill_resp), (false, stroke_resp)] {
         let name = if fill { tr!("Fill colour") } else { tr!("Stroke colour") };
-        a11y::control(ui, &resp, WidgetType::ColorButton, name, None);
+        a11y::control(ui, &resp, Role::ColorWell, name, None);
         let resp = resp.on_hover_text(if fill { tr!("Fill colour: click to pick the colour and how clear it is. Each stop of a gradient has its own.") } else { tr!("Stroke colour: click to pick the colour and how clear it is") });
         // As in Animate, the square clicked last is the one swatches set (ADR 0078).
         if resp.clicked() {
@@ -306,7 +306,7 @@ pub fn edit_bar(app: &mut App, ui: &mut egui::Ui) {
                 #[cfg(test)]
                 ui.ctx().data_mut(|data| {
                     data.insert_temp(
-                        egui::Id::new("test_scene_label_rect"),
+                        egui::Id::unique("test_scene_label_rect"),
                         label_response.interact_rect,
                     );
                 });
@@ -364,11 +364,11 @@ pub fn edit_bar(app: &mut App, ui: &mut egui::Ui) {
             #[cfg(test)]
             ui.ctx().data_mut(|data| {
                 data.insert_temp(
-                    egui::Id::new("test_scene_arrow_rect"),
+                    egui::Id::unique("test_scene_arrow_rect"),
                     scene_response.interact_rect,
                 );
                 data.insert_temp(
-                    egui::Id::new("test_scene_arrow_id"),
+                    egui::Id::unique("test_scene_arrow_id"),
                     scene_response.id,
                 );
             });
@@ -406,7 +406,8 @@ pub fn edit_bar(app: &mut App, ui: &mut egui::Ui) {
         let layer = app.s.active_layer().map_or("—".to_string(), |l| l.name.clone());
         ui.label(text(Type::Body, layer).color(T.text_dim));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let z = app.view.zoom;
+            let ppp = ui.ctx().pixels_per_point();
+            let z = app.view.zoom * ppp;
             let canvas = app.stage_cache.canvas;
             // The presets arrow alone opens the menu, as in Animate: clicking the text never does.
             // The arrow is an icon drawn over a blank button (the fonts may lack an arrow glyph).
@@ -418,18 +419,18 @@ pub fn edit_bar(app: &mut App, ui: &mut egui::Ui) {
                 for pct in [25.0f32, 50.0, 100.0, 200.0, 400.0, 800.0] {
                     if ui.selectable_label((z * 100.0 - pct).abs() < 0.5, text(Type::Data, format!("{pct:>4.0}%"))).clicked() {
                         ui.close();
-                        app.zoom_about(canvas, canvas.center(), pct / 100.0);
+                        app.zoom_about(canvas, canvas.center(), pct / (100.0 * ppp), ppp);
                     }
                 }
             });
             crate::icons::paint(ui.painter(), Rect::from_center_size(arrow.response.rect.center(), vec2(12.0, 12.0)), Icon::ChevronDown, if arrow.response.hovered() { T.icon_hot } else { T.icon });
             arrow.response.set_name(tr!("Zoom presets"));
-            ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("zoom_arrow"), arrow.response.rect));
+            ui.ctx().data_mut(|d| d.insert_temp(egui::Id::unique("zoom_arrow"), arrow.response.rect));
             // The percentage itself is typed here: focus to type a value, Enter or focus loss applies it.
             let was_editing = app.zoom_text.is_some();
             let mut value = app.zoom_text.take().unwrap_or_else(|| format!("{:>4.0}%", z * 100.0));
             let field = with_type(ui, Type::Data, |ui| ui.add(egui::TextEdit::singleline(&mut value).desired_width(56.0).char_limit(7)).named(tr!("Zoom")));
-            ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("zoom_field"), field.rect));
+            ui.ctx().data_mut(|d| d.insert_temp(egui::Id::unique("zoom_field"), field.rect));
             if !was_editing && field.gained_focus() {
                 // Type digits over digits, not over the percent sign.
                 value = format!("{:.0}", z * 100.0);
@@ -441,7 +442,7 @@ pub fn edit_bar(app: &mut App, ui: &mut egui::Ui) {
                 if let Ok(pct) = typed.parse::<f32>()
                     && pct.is_finite()
                 {
-                    app.zoom_about(canvas, canvas.center(), pct.clamp(5.0, 6400.0) / 100.0);
+                    app.zoom_about(canvas, canvas.center(), pct / (100.0 * ppp), ppp);
                 }
                 app.zoom_text = None;
                 if enter {
@@ -552,6 +553,17 @@ fn hex(c: [u8; 3]) -> String {
 pub(crate) fn live(app: &mut App, label: &str, id: &str, p: Value) {
     app.s.begin_gesture(label);
     app.run(id, p);
+}
+
+/// A live edit that moves, sizes or turns the selection (the Position, Size, Scale and Rotation
+/// fields): selected raw shapes then float where they land and merge with the drawing under
+/// them once deselected, as after a move on the stage (ADR 0122, #571).
+/// A refused edit (a scale of zero) moved nothing, so it leaves the selection as it was.
+fn live_move(app: &mut App, label: &str, id: &str, p: Value) {
+    app.s.begin_gesture(label);
+    if app.run(id, p).is_some() {
+        app.drop_raw();
+    }
 }
 
 /// A symbol's 9-slice guides (ADR 0055): Animate's "Enable guides for 9-slice scaling" and,
@@ -674,7 +686,7 @@ pub(crate) fn align_panel(app: &mut App, ui: &mut egui::Ui) {
             Some(k) => format!("{} ({})", crate::i18n::t_cmd(c.id, c.label), crate::platform::shortcut_label(k)),
             None => crate::i18n::t_cmd(c.id, c.label).to_string(),
         });
-        a11y::control(ui, &resp, WidgetType::Button, &tip, None);
+        a11y::control(ui, &resp, Role::Button, &tip, None);
         let tip = if has_sel { tip } else { tr!("{command}\nSelect something to align", command = tip) };
         if resp.on_hover_text(tip).clicked() {
             // Leave it unset when off, so a single shape still aligns to the stage.
@@ -696,6 +708,16 @@ pub(crate) fn align_panel(app: &mut App, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing.x = 2.0;
         button(app, ui, Icon::DistributeH, "align.distribute_h");
         button(app, ui, Icon::DistributeV, "align.distribute_v");
+        ui.add_space(10.0);
+        button(app, ui, Icon::SpaceH, "align.space_h");
+        button(app, ui, Icon::SpaceV, "align.space_v");
+    });
+    // Match Size (#566): to the largest selected object, or with To stage to the stage.
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = 2.0;
+        button(app, ui, Icon::MatchWidth, "align.match_width");
+        button(app, ui, Icon::MatchHeight, "align.match_height");
+        button(app, ui, Icon::MatchSize, "align.match_size");
         ui.add_space(12.0);
         crate::theme::checkbox(ui, &mut app.align_to_stage, text(Type::Body, tr!("To stage"))).on_hover_text(tr!("Align to the stage instead of the selection's bounds (a single shape always aligns to the stage)"));
     });
@@ -1096,6 +1118,13 @@ fn selection_props(app: &mut App, ui: &mut egui::Ui, e: &anicraft_engine::doc::E
         ui.label(text(Type::Caption, tr!("Posed by its bone: drag it with the Selection tool. Colour effect, blending and filters apply on every pose of the armature.")));
         return;
     }
+    // At the top of a shape's properties (#530): the same command as Modify › Shape ›
+    // Convert Lines to Fills. A selection with no line leaves the button unavailable, so a
+    // click changes nothing and says nothing.
+    if matches!(e.kind, ElementKind::Shape(_)) {
+        lines_to_fills_button(app, ui);
+        ui.add_space(4.0);
+    }
     if let ElementKind::Symbol { symbol, events, .. } = &e.kind
         && app.s.doc.symbol(*symbol).is_some_and(|x| x.kind != SymbolKind::Graphic)
     {
@@ -1114,7 +1143,7 @@ fn selection_props(app: &mut App, ui: &mut egui::Ui, e: &anicraft_engine::doc::E
                 let a = ui.add(egui::DragValue::new(&mut bx).prefix("X ").speed(1.0).max_decimals(1)).named(tr!("Position X"));
                 let c = ui.add(egui::DragValue::new(&mut by).prefix("Y ").speed(1.0).max_decimals(1)).named(tr!("Position Y"));
                 if (a.changed() || c.changed()) && !b.is_empty() {
-                    live(app, tr_noop!("Move"), "element.translate", json!({"dx": bx - ox, "dy": by - oy}));
+                    live_move(app, tr_noop!("Move"), "element.translate", json!({"dx": bx - ox, "dy": by - oy}));
                 }
             });
         } else {
@@ -1122,7 +1151,7 @@ fn selection_props(app: &mut App, ui: &mut egui::Ui, e: &anicraft_engine::doc::E
                 let a = ui.add(egui::DragValue::new(&mut x).prefix("X ").speed(1.0).max_decimals(1)).named(tr!("Position X"));
                 let b = ui.add(egui::DragValue::new(&mut y).prefix("Y ").speed(1.0).max_decimals(1)).named(tr!("Position Y"));
                 if a.changed() || b.changed() {
-                    live(app, tr_noop!("Move"), "element.set_transform", json!({"x": x, "y": y}));
+                    live_move(app, tr_noop!("Move"), "element.set_transform", json!({"x": x, "y": y}));
                 }
             });
         }
@@ -1138,7 +1167,7 @@ fn selection_props(app: &mut App, ui: &mut egui::Ui, e: &anicraft_engine::doc::E
                 if (a.changed() || c.changed())
                     && let Some(m) = resize_affine([sb.min.x, sb.min.y, sb.max.x, sb.max.y], w, h)
                 {
-                    live(app, tr_noop!("Resize"), "modify.transform", json!({"a": m[0], "b": m[1], "c": m[2], "d": m[3], "e": m[4], "f": m[5]}));
+                    live_move(app, tr_noop!("Resize"), "modify.transform", json!({"a": m[0], "b": m[1], "c": m[2], "d": m[3], "e": m[4], "f": m[5]}));
                 }
             });
         }
@@ -1164,12 +1193,12 @@ fn selection_props(app: &mut App, ui: &mut egui::Ui, e: &anicraft_engine::doc::E
             if lock.clicked() {
                 app.scale_lock = !locked;
             }
-            ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("scale_lock_geometry"), (a.rect, b.rect, lock.rect)));
+            ui.ctx().data_mut(|d| d.insert_temp(egui::Id::unique("scale_lock_geometry"), (a.rect, b.rect, lock.rect)));
             if a.changed() || b.changed() {
                 if locked {
                     (sx, sy) = linked_scale((sx0, sy0), (sx, sy), a.changed());
                 }
-                live(app, tr_noop!("Scale"), "element.set_transform", json!({"sx": sx / 100.0, "sy": sy / 100.0}));
+                live_move(app, tr_noop!("Scale"), "element.set_transform", json!({"sx": sx / 100.0, "sy": sy / 100.0}));
             }
             // Two fields and the lock fill the row: "mixed" as one faint mark (its hover says it
             // in words), so the values stay beside their label instead of wrapping under it.
@@ -1181,7 +1210,7 @@ fn selection_props(app: &mut App, ui: &mut egui::Ui, e: &anicraft_engine::doc::E
         });
         row(ui, tr!("Rotation"), |ui| {
             if ui.add(egui::DragValue::new(&mut rot).suffix("°").speed(0.5).range(-360.0..=360.0).max_decimals(1)).named(tr!("Rotation")).changed() {
-                live(app, tr_noop!("Rotate"), "element.set_transform", json!({"rotation": rot}));
+                live_move(app, tr_noop!("Rotate"), "element.set_transform", json!({"rotation": rot}));
             }
             mixed(ui, m.rotation);
         });
@@ -1438,6 +1467,27 @@ fn selection_props(app: &mut App, ui: &mut egui::Ui, e: &anicraft_engine::doc::E
                 }
             }
         });
+    }
+}
+
+/// Convert Lines to Fills, drawn at the top of a shape's properties (#530). It dispatches
+/// `modify.lines_to_fills`. With no line selected the button is unavailable: a click does not
+/// run the command, so a fill on its own stays as it is and no error is reported.
+fn lines_to_fills_button(app: &mut App, ui: &mut egui::Ui) {
+    let has_line = app.s.selected_elements().iter().any(|(_, el)| matches!(&el.kind, ElementKind::Shape(sh) if sh.stroke.is_some()));
+    let label = anicraft_engine::find_command("modify.lines_to_fills").map(|c| crate::i18n::t_cmd(c.id, c.label)).unwrap_or_else(|| tr!("Convert Lines to Fills"));
+    let resp = ui.add_enabled(has_line, egui::Button::new(label));
+    let resp = if has_line {
+        resp.on_hover_text(tr!("Turns each selected line into a fill of its outline, in the line's colour, and keeps a fill the shape already has"))
+    } else {
+        resp.on_disabled_hover_text(tr!("Select a line to turn it into a fill. A fill on its own stays as it is"))
+    };
+    if has_line
+        && resp.clicked()
+        && let Some(v) = app.run("modify.lines_to_fills", json!({}))
+    {
+        let n = v["converted"].as_u64().unwrap_or(1);
+        app.status_ok(trn!("Turned {n} line into a fill. {undo} to undo.", "Turned {n} lines into fills. {undo} to undo.", n, undo = app.undo_key()));
     }
 }
 
@@ -1730,7 +1780,7 @@ fn filter_grip(ui: &mut egui::Ui, fname: &str, i: usize, n: usize, act: &mut Opt
         }
     }
     let (up, down) = (crate::platform::shortcut_label("Alt+Up"), crate::platform::shortcut_label("Alt+Down"));
-    a11y::control(ui, &resp, WidgetType::Button, &tr!("Move {filter}: drag, or {up} and {down}", filter = fname, up = up.as_str(), down = down.as_str()), None);
+    a11y::control(ui, &resp, Role::Button, &tr!("Move {filter}: drag, or {up} and {down}", filter = fname, up = up.as_str(), down = down.as_str()), None);
     resp.on_hover_text(tr!("Drag to change the order (filters apply from the top down)"))
 }
 
@@ -1766,7 +1816,7 @@ fn filter_rows(app: &mut App, ui: &mut egui::Ui, current: &[anicraft_engine::doc
         .response
         .set_name(tr!("Add filter"));
         let pr = crate::timeline::icon_button(ui, tr!("Filter presets: apply, save, rename, delete, import, export"), None, Icon::Folder);
-        egui::Popup::menu(&pr).id(egui::Id::new("anicraft.filters.presets")).show(|ui| {
+        egui::Popup::menu(&pr).id(egui::Id::unique("anicraft.filters.presets")).show(|ui| {
             // The built-in presets the menu lists, then your own.
             let shown: Vec<&(&'static str, String, bool)> = builtin.iter().filter(|b| b.2).collect();
             if !shown.is_empty() {
@@ -1828,7 +1878,7 @@ fn filter_rows(app: &mut App, ui: &mut egui::Ui, current: &[anicraft_engine::doc
             }
         });
         let more = crate::timeline::icon_button(ui, tr!("Filter options: copy, paste, enable, disable, remove"), None, Icon::Ellipsis);
-        egui::Popup::menu(&more).id(egui::Id::new("anicraft.filters.menu")).show(|ui| {
+        egui::Popup::menu(&more).id(egui::Id::unique("anicraft.filters.menu")).show(|ui| {
             if ui.add_enabled(n > 0, egui::Button::new(tr!("Copy All Filters"))).clicked() {
                 act = Some(FilterAct::Copy(None));
             }
@@ -1889,7 +1939,7 @@ fn filter_rows(app: &mut App, ui: &mut egui::Ui, current: &[anicraft_engine::doc
     let quality_names = [tr!("Low"), tr!("Medium"), tr!("High")];
     // Dragging a filter by its grip: which one, and where each header row starts (last frame's,
     // for the drop: rows don't move while one is dragged).
-    let drag_id = egui::Id::new("anicraft.filters.drag");
+    let drag_id = egui::Id::unique("anicraft.filters.drag");
     let mut dragging: Option<usize> = ui.data(|d| d.get_temp(drag_id));
     let last_tops: Vec<f32> = ui.data(|d| d.get_temp(drag_id.with("tops"))).unwrap_or_default();
     let drop_at = |y: f32| last_tops.iter().take(n).rposition(|t| y >= *t).unwrap_or(0);
@@ -1901,131 +1951,146 @@ fn filter_rows(app: &mut App, ui: &mut egui::Ui, current: &[anicraft_engine::doc
         let on = entry.enabled;
         ui.push_id(("filter", i), |ui| {
             tops.push(ui.cursor().top());
-            let header = ui.horizontal(|ui| {
-                let grip = filter_grip(ui, fname, i, n, &mut act);
-                let tip = if on { tr!("Turn {filter} off (it keeps its settings)", filter = fname) } else { tr!("Turn {filter} on", filter = fname) };
-                if crate::timeline::icon_button(ui, &tip, Some(on), if on { Icon::Eye } else { Icon::EyeOff }).clicked() {
-                    act = Some(FilterAct::Enable(Some(i), !on));
+            // Each filter is a card (#533) that folds to its header (#534); folding is view state.
+            let open_id = egui::Id::unique("anicraft.filters.open").with(i);
+            let mut open = ui.data(|d| d.get_temp::<bool>(open_id)).unwrap_or(true);
+            egui::Frame::new().stroke(Stroke::new(1.0, T.border)).corner_radius(T.rc()).inner_margin(egui::Margin::symmetric(4, 2)).show(ui, |ui| {
+                ui.set_min_width(ui.available_width());
+                let header = ui.horizontal(|ui| {
+                    let twirl = if open { tr!("Fold {filter}", filter = fname) } else { tr!("Unfold {filter}", filter = fname) };
+                    if crate::timeline::icon_button_wide(ui, &twirl, None, if open { Icon::ChevronDown } else { Icon::ChevronRight }, 18.0).clicked() {
+                        open = !open;
+                        ui.data_mut(|d| d.insert_temp(open_id, open));
+                    }
+                    let grip = filter_grip(ui, fname, i, n, &mut act);
+                    let tip = if on { tr!("Turn {filter} off (it keeps its settings)", filter = fname) } else { tr!("Turn {filter} on", filter = fname) };
+                    if crate::timeline::icon_button(ui, &tip, Some(on), if on { Icon::Eye } else { Icon::EyeOff }).clicked() {
+                        act = Some(FilterAct::Enable(Some(i), !on));
+                    }
+                    let name = if on { text(Type::Label, fname) } else { text(Type::Label, tr!("{filter} (off)", filter = fname)).color(T.text_faint) };
+                    ui.label(name);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if crate::timeline::icon_button(ui, &tr!("Remove {filter}", filter = fname), None, Icon::Trash).clicked() {
+                            act = Some(FilterAct::Remove(Some(i)));
+                        }
+                    });
+                    grip
+                });
+                let grip = header.inner;
+                if grip.drag_started() {
+                    dragging = Some(i);
                 }
-                let name = if on { text(Type::Label, fname) } else { text(Type::Label, tr!("{filter} (off)", filter = fname)).color(T.text_faint) };
-                ui.label(name);
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if crate::timeline::icon_button(ui, &tr!("Remove {filter}", filter = fname), None, Icon::Trash).clicked() {
+                if grip.drag_stopped() && dragging == Some(i) {
+                    dragging = None;
+                    if let Some(p) = ui.ctx().pointer_interact_pos()
+                        && drop_at(p.y) != i
+                    {
+                        act = Some(FilterAct::Move(i, drop_at(p.y)));
+                    }
+                }
+                header.response.context_menu(|ui| {
+                    if ui.add_enabled(i > 0, egui::Button::new(tr!("Move Up"))).clicked() {
+                        act = Some(FilterAct::Move(i, i - 1));
+                    }
+                    if ui.add_enabled(i + 1 < n, egui::Button::new(tr!("Move Down"))).clicked() {
+                        act = Some(FilterAct::Move(i, i + 1));
+                    }
+                    ui.separator();
+                    if ui.button(if on { tr!("Turn Off") } else { tr!("Turn On") }).clicked() {
+                        act = Some(FilterAct::Enable(Some(i), !on));
+                    }
+                    if ui.button(tr!("Copy Filter")).clicked() {
+                        act = Some(FilterAct::Copy(Some(i)));
+                    }
+                    if ui.button(tr!("Remove Filter")).clicked() {
                         act = Some(FilterAct::Remove(Some(i)));
                     }
                 });
-                grip
-            });
-            let grip = header.inner;
-            if grip.drag_started() {
-                dragging = Some(i);
-            }
-            if grip.drag_stopped() && dragging == Some(i) {
-                dragging = None;
-                if let Some(p) = ui.ctx().pointer_interact_pos()
-                    && drop_at(p.y) != i
-                {
-                    act = Some(FilterAct::Move(i, drop_at(p.y)));
+                if !open {
+                    return;
                 }
-            }
-            header.response.context_menu(|ui| {
-                if ui.add_enabled(i > 0, egui::Button::new(tr!("Move Up"))).clicked() {
-                    act = Some(FilterAct::Move(i, i - 1));
-                }
-                if ui.add_enabled(i + 1 < n, egui::Button::new(tr!("Move Down"))).clicked() {
-                    act = Some(FilterAct::Move(i, i + 1));
-                }
-                ui.separator();
-                if ui.button(if on { tr!("Turn Off") } else { tr!("Turn On") }).clicked() {
-                    act = Some(FilterAct::Enable(Some(i), !on));
-                }
-                if ui.button(tr!("Copy Filter")).clicked() {
-                    act = Some(FilterAct::Copy(Some(i)));
-                }
-                if ui.button(tr!("Remove Filter")).clicked() {
-                    act = Some(FilterAct::Remove(Some(i)));
-                }
-            });
-            let f = &mut entry.filter;
-            let blur_rows = |ui: &mut egui::Ui, bx: &mut f32, by: &mut f32, quality: &mut u8, changed: &mut Option<&'static str>| {
-                row(ui, tr!("Blur"), |ui| {
-                    let a = ui.add(egui::DragValue::new(bx).prefix("X ").suffix(" px").speed(0.25).range(0.0..=255.0).max_decimals(1)).named(&tr!("{filter} blur X", filter = fname));
-                    let b = ui.add(egui::DragValue::new(by).prefix("Y ").suffix(" px").speed(0.25).range(0.0..=255.0).max_decimals(1)).named(&tr!("{filter} blur Y", filter = fname));
-                    if a.changed() || b.changed() {
-                        *changed = Some(tr_noop!("Filter blur"));
-                    }
-                });
-                row_prose(ui, tr!("Quality"), |ui| {
-                    for (q, name) in quality_names.iter().enumerate() {
-                        if ui.selectable_label(usize::from(*quality) == q + 1, *name).named(&tr!("{filter} quality {quality}", filter = fname, quality = name)).clicked() {
-                            *quality = q as u8 + 1;
-                            *changed = Some(tr_noop!("Filter quality"));
+                let f = &mut entry.filter;
+                let blur_rows = |ui: &mut egui::Ui, bx: &mut f32, by: &mut f32, quality: &mut u8, changed: &mut Option<&'static str>| {
+                    row(ui, tr!("Blur"), |ui| {
+                        let a = ui.add(egui::DragValue::new(bx).prefix("X ").suffix(" px").speed(0.25).range(0.0..=255.0).max_decimals(1)).named(&tr!("{filter} blur X", filter = fname));
+                        let b = ui.add(egui::DragValue::new(by).prefix("Y ").suffix(" px").speed(0.25).range(0.0..=255.0).max_decimals(1)).named(&tr!("{filter} blur Y", filter = fname));
+                        if a.changed() || b.changed() {
+                            *changed = Some(tr_noop!("Filter blur"));
                         }
-                    }
-                });
-            };
-            let pin = anicraft_engine::doc::pinned_stop(f);
-            match f {
-                Filter::Blur { blur_x, blur_y, quality } => blur_rows(ui, blur_x, blur_y, quality, &mut changed),
-                Filter::DropShadow { blur_x, blur_y, strength, quality, angle, distance, color, inner, knockout, hide_object } => {
-                    blur_rows(ui, blur_x, blur_y, quality, &mut changed);
-                    shadow_rows(ui, fname, strength, color, &mut changed);
-                    offset_row(ui, fname, angle, distance, tr_noop!("Shadow offset"), &mut changed);
-                    row_prose(ui, tr!("Options"), |ui| {
-                        for (v, label) in [(inner, tr!("Inner")), (knockout, tr!("Knockout")), (hide_object, tr!("Hide object"))] {
-                            if crate::theme::checkbox(ui, v, label).changed() {
-                                changed = Some(tr_noop!("Shadow options"));
+                    });
+                    row_prose(ui, tr!("Quality"), |ui| {
+                        for (q, name) in quality_names.iter().enumerate() {
+                            if ui.selectable_label(usize::from(*quality) == q + 1, *name).named(&tr!("{filter} quality {quality}", filter = fname, quality = name)).clicked() {
+                                *quality = q as u8 + 1;
+                                *changed = Some(tr_noop!("Filter quality"));
                             }
                         }
                     });
-                }
-                Filter::Glow { blur_x, blur_y, strength, quality, color, inner, knockout } => {
-                    blur_rows(ui, blur_x, blur_y, quality, &mut changed);
-                    shadow_rows(ui, fname, strength, color, &mut changed);
-                    row_prose(ui, tr!("Options"), |ui| {
-                        for (v, label) in [(inner, tr!("Inner")), (knockout, tr!("Knockout"))] {
-                            if crate::theme::checkbox(ui, v, label).changed() {
-                                changed = Some(tr_noop!("Glow options"));
-                            }
-                        }
-                    });
-                }
-                Filter::Bevel { blur_x, blur_y, strength, quality, angle, distance, shadow_color, highlight_color, side, knockout } => {
-                    blur_rows(ui, blur_x, blur_y, quality, &mut changed);
-                    strength_row(ui, fname, strength, &mut changed);
-                    row_prose(ui, tr!("Colours"), |ui| {
-                        let colours = [
-                            (shadow_color, tr!("Shadow"), tr!("{filter} shadow colour", filter = fname), tr_noop!("Bevel shadow colour")),
-                            (highlight_color, tr!("Highlight"), tr!("{filter} highlight colour", filter = fname), tr_noop!("Bevel highlight colour")),
-                        ];
-                        for (c, label, name, undo) in colours {
-                            ui.label(label);
-                            if alpha_swatch(ui, c, &name) {
-                                changed = Some(undo);
-                            }
-                        }
-                    });
-                    offset_row(ui, fname, angle, distance, tr_noop!("Bevel offset"), &mut changed);
-                    side_rows(ui, fname, side, knockout, &mut changed);
-                }
-                Filter::GradientGlow { blur_x, blur_y, strength, quality, angle, distance, stops, side, knockout } | Filter::GradientBevel { blur_x, blur_y, strength, quality, angle, distance, stops, side, knockout } => {
-                    // The ramp first: it is what makes the filter.
-                    ramp_editor(ui, fname, stops, pin, &mut changed);
-                    blur_rows(ui, blur_x, blur_y, quality, &mut changed);
-                    strength_row(ui, fname, strength, &mut changed);
-                    offset_row(ui, fname, angle, distance, tr_noop!("Filter offset"), &mut changed);
-                    side_rows(ui, fname, side, knockout, &mut changed);
-                }
-                Filter::AdjustColor { brightness, contrast, saturation, hue } => {
-                    for (v, label, range) in [(brightness, tr!("Brightness"), 100.0), (contrast, tr!("Contrast"), 100.0), (saturation, tr!("Saturation"), 100.0), (hue, tr!("Hue"), 180.0)] {
-                        row(ui, label, |ui| {
-                            if a11y::slider(ui, v, -range..=range, label, a11y::SliderLook { max_decimals: Some(0), ..Default::default() }).changed() {
-                                changed = Some(tr_noop!("Adjust colour"));
+                };
+                let pin = anicraft_engine::doc::pinned_stop(f);
+                match f {
+                    Filter::Blur { blur_x, blur_y, quality } => blur_rows(ui, blur_x, blur_y, quality, &mut changed),
+                    Filter::DropShadow { blur_x, blur_y, strength, quality, angle, distance, color, inner, knockout, hide_object } => {
+                        blur_rows(ui, blur_x, blur_y, quality, &mut changed);
+                        shadow_rows(ui, fname, strength, color, &mut changed);
+                        offset_row(ui, fname, angle, distance, tr_noop!("Shadow offset"), &mut changed);
+                        row_prose(ui, tr!("Options"), |ui| {
+                            for (v, label) in [(inner, tr!("Inner")), (knockout, tr!("Knockout")), (hide_object, tr!("Hide object"))] {
+                                if crate::theme::checkbox(ui, v, label).changed() {
+                                    changed = Some(tr_noop!("Shadow options"));
+                                }
                             }
                         });
                     }
+                    Filter::Glow { blur_x, blur_y, strength, quality, color, inner, knockout } => {
+                        blur_rows(ui, blur_x, blur_y, quality, &mut changed);
+                        shadow_rows(ui, fname, strength, color, &mut changed);
+                        row_prose(ui, tr!("Options"), |ui| {
+                            for (v, label) in [(inner, tr!("Inner")), (knockout, tr!("Knockout"))] {
+                                if crate::theme::checkbox(ui, v, label).changed() {
+                                    changed = Some(tr_noop!("Glow options"));
+                                }
+                            }
+                        });
+                    }
+                    Filter::Bevel { blur_x, blur_y, strength, quality, angle, distance, shadow_color, highlight_color, side, knockout } => {
+                        blur_rows(ui, blur_x, blur_y, quality, &mut changed);
+                        strength_row(ui, fname, strength, &mut changed);
+                        row_prose(ui, tr!("Colours"), |ui| {
+                            let colours = [
+                                (shadow_color, tr!("Shadow"), tr!("{filter} shadow colour", filter = fname), tr_noop!("Bevel shadow colour")),
+                                (highlight_color, tr!("Highlight"), tr!("{filter} highlight colour", filter = fname), tr_noop!("Bevel highlight colour")),
+                            ];
+                            for (c, label, name, undo) in colours {
+                                ui.label(label);
+                                if alpha_swatch(ui, c, &name) {
+                                    changed = Some(undo);
+                                }
+                            }
+                        });
+                        offset_row(ui, fname, angle, distance, tr_noop!("Bevel offset"), &mut changed);
+                        side_rows(ui, fname, side, knockout, &mut changed);
+                    }
+                    Filter::GradientGlow { blur_x, blur_y, strength, quality, angle, distance, stops, side, knockout } | Filter::GradientBevel { blur_x, blur_y, strength, quality, angle, distance, stops, side, knockout } => {
+                        // The ramp first: it is what makes the filter.
+                        ramp_editor(ui, fname, stops, pin, &mut changed);
+                        blur_rows(ui, blur_x, blur_y, quality, &mut changed);
+                        strength_row(ui, fname, strength, &mut changed);
+                        offset_row(ui, fname, angle, distance, tr_noop!("Filter offset"), &mut changed);
+                        side_rows(ui, fname, side, knockout, &mut changed);
+                    }
+                    Filter::AdjustColor { brightness, contrast, saturation, hue } => {
+                        for (v, label, range) in [(brightness, tr!("Brightness"), 100.0), (contrast, tr!("Contrast"), 100.0), (saturation, tr!("Saturation"), 100.0), (hue, tr!("Hue"), 180.0)] {
+                            row(ui, label, |ui| {
+                                if a11y::slider(ui, v, -range..=range, label, a11y::SliderLook { max_decimals: Some(0), ..Default::default() }).changed() {
+                                    changed = Some(tr_noop!("Adjust colour"));
+                                }
+                            });
+                        }
+                    }
                 }
-            }
+            });
+            ui.add_space(2.0);
         });
     }
     // Where the rows are, for the next frame's drop, and the drop mark while one is dragged:
@@ -2166,7 +2231,7 @@ pub(crate) fn alpha_swatch(ui: &mut egui::Ui, c: &mut Rgba, name: &str) -> bool 
 /// stays transparent.
 fn ramp_editor(ui: &mut egui::Ui, fname: &str, stops: &mut Vec<anicraft_engine::doc::GradientStop>, pin: Option<f32>, changed: &mut Option<&'static str>) {
     use anicraft_engine::doc::{GradientStop, MAX_RAMP_STOPS, REST_SNAP, ramp_at};
-    let sel_id = ui.id().with("ramp_stop");
+    let sel_id = ui.scope_id().with("ramp_stop");
     let mut sel: usize = ui.data(|d| d.get_temp(sel_id)).unwrap_or(0);
     let is_pinned = |s: &GradientStop| pin.is_some_and(|p| (s.offset - p).abs() < 1e-4);
     // Where each stop may move (the ramp is in order): between its neighbours, and clear of the
@@ -2186,7 +2251,7 @@ fn ramp_editor(ui: &mut egui::Ui, fname: &str, stops: &mut Vec<anicraft_engine::
         ui.vertical(|ui| {
             let w = ui.available_width().clamp(80.0, 200.0);
             let (strip, resp) = ui.allocate_exact_size(vec2(w, 16.0), Sense::click());
-            a11y::control(ui, &resp, WidgetType::Button, &tr!("{filter} gradient: add a colour stop", filter = fname), None);
+            a11y::control(ui, &resp, Role::Button, &tr!("{filter} gradient: add a colour stop", filter = fname), None);
             let resp = resp.on_hover_text(tr!("Click to add a colour stop"));
             let p = ui.painter();
             // A checkerboard under the ramp shows its opacity.
@@ -2219,10 +2284,10 @@ fn ramp_editor(ui: &mut egui::Ui, fname: &str, stops: &mut Vec<anicraft_engine::
                 let x = strip.left() + st.offset * strip.width();
                 let hit = Rect::from_center_size(pos2(x, track.center().y), vec2(10.0, 12.0));
                 let pinned = is_pinned(st);
-                let r = ui.interact(hit, ui.id().with(("ramp_marker", i)), if pinned { Sense::click() } else { Sense::click_and_drag() });
+                let r = ui.interact(hit, ui.scope_id().with(("ramp_marker", i)), if pinned { Sense::click() } else { Sense::click_and_drag() });
                 let at = format!("{:.0}", st.offset * 100.0);
                 let label = if pinned { tr!("{filter} colour stop {stop} at {at}% (fixed)", filter = fname, stop = i + 1, at = at) } else { tr!("{filter} colour stop {stop} at {at}%", filter = fname, stop = i + 1, at = at) };
-                a11y::control(ui, &r, WidgetType::Button, &label, Some(i == sel));
+                a11y::control(ui, &r, Role::Button, &label, Some(i == sel));
                 if r.clicked() || r.drag_started() {
                     sel = i;
                 }
@@ -3322,7 +3387,7 @@ fn brush_props(app: &mut App, ui: &mut egui::Ui) {
 fn profile_preview(ui: &mut egui::Ui, profile: Option<&anicraft_engine::doc::WidthProfile>, size: egui::Vec2, color: Color32, name: Option<&str>) -> egui::Response {
     let (r, resp) = ui.allocate_exact_size(size, if name.is_some() { Sense::click() } else { Sense::hover() });
     if let Some(name) = name {
-        crate::a11y::control(ui, &resp, egui::WidgetType::Button, name, None);
+        crate::a11y::control(ui, &resp, egui::Role::Button, name, None);
     }
     let p = ui.painter();
     let n = 32;
@@ -3359,7 +3424,7 @@ fn profile_picker(ui: &mut egui::Ui, which: ProfileRow, current: Option<&anicraf
     let mut picked = None;
     row_prose(ui, tr!("Width"), |ui| {
         profile_preview(ui, current, vec2(44.0, 12.0), T.text_dim, None);
-        let menu = ui.id().with(which);
+        let menu = ui.scope_id().with(which);
         egui::ComboBox::from_id_salt(menu).width(crate::theme::fit(ui, 150.0)).selected_text(label).show_ui(ui, |ui| {
             for pr in ProfilePreset::ALL {
                 let on = preset == Some(pr);
@@ -3544,7 +3609,7 @@ mod tests {
                     ctx.run_ui(input, |ui| tools(app, ui, flow)).textures_delta.clear();
                 };
                 draw(&mut app, Vec::new());
-                let rect = ctx.data(|data| data.get_temp::<Rect>(egui::Id::new("test_hand_tool_rect"))).expect("Hand tool drawn");
+                let rect = ctx.data(|data| data.get_temp::<Rect>(egui::Id::unique("test_hand_tool_rect"))).expect("Hand tool drawn");
                 let at = rect.center();
                 let event = |pressed| vec![
                     egui::Event::PointerMoved(at),
@@ -3630,7 +3695,7 @@ mod tests {
         // Get the actual scene control's interaction rectangle.
         let label_rect = ctx.data(|data| {
             data.get_temp::<egui::Rect>(
-                egui::Id::new("test_scene_label_rect")
+                egui::Id::unique("test_scene_label_rect")
             )
         }).expect("Scene control rectangle should exist");
 
@@ -3700,13 +3765,13 @@ mod tests {
         // Get the actual dropdown arrow's rectangle and widget ID.
         let arrow_rect = ctx.data(|data| {
             data.get_temp::<egui::Rect>(
-                egui::Id::new("test_scene_arrow_rect")
+                egui::Id::unique("test_scene_arrow_rect")
             )
         }).expect("Scene arrow rectangle should exist");
 
         let arrow_id = ctx.data(|data| {
             data.get_temp::<egui::Id>(
-                egui::Id::new("test_scene_arrow_id")
+                egui::Id::unique("test_scene_arrow_id")
             )
         }).expect("Scene arrow ID should exist");
 
@@ -3785,7 +3850,7 @@ mod tests {
             }
         };
         frames(&ctx, &mut app);
-        let (_, _, lock_rect) = ctx.data(|d| d.get_temp::<(Rect, Rect, Rect)>(egui::Id::new("scale_lock_geometry"))).expect("the Scale row drew");
+        let (_, _, lock_rect) = ctx.data(|d| d.get_temp::<(Rect, Rect, Rect)>(egui::Id::unique("scale_lock_geometry"))).expect("the Scale row drew");
         // Click the lock: view state only (no document change, no undo step).
         let at = lock_rect.center();
         let press = |pressed: bool| Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE };
@@ -3824,6 +3889,69 @@ mod tests {
         let (sx, sy) = check(&app);
         assert!((sx - 3.0).abs() < 1e-4 && (sy - 1.0).abs() < 1e-4, "only X changed, got ({sx}, {sy})");
         app.s.undo().expect("undo");
+    }
+
+    /// #571: a raw shape moved onto another with the Position fields replaces it there once it
+    /// is deselected, as a move on the stage does: drawn on top, the same size, it leaves nothing
+    /// of the shape under it.
+    #[test]
+    fn a_raw_shape_moved_by_the_position_fields_merges_when_deselected() {
+        let ctx = egui::Context::default();
+        let mut app = App::with_context(&ctx, anicraft_engine::Session::default(), Some(std::path::PathBuf::from("unused.png")));
+        let fills = |app: &App, c: &str| {
+            let want = anicraft_engine::doc::Rgba::hex(u32::from_str_radix(c, 16).unwrap_or(0));
+            app.s.visible_elements().iter().filter(|e| matches!(&e.kind, ElementKind::Shape(sh) if sh.merge && sh.fill.as_ref().is_some_and(|f| f.primary_color() == want))).count()
+        };
+        app.run("draw.rect", json!({"x": 0, "y": 0, "w": 100, "h": 100, "fill": "#0000ff", "stroke": "#000000", "object": false}));
+        app.run("edit.deselect", json!({}));
+        app.run("draw.rect", json!({"x": 300, "y": 300, "w": 100, "h": 100, "fill": "#ff00ff", "stroke": "#000000", "object": false}));
+        assert_eq!((fills(&app, "0000ff"), fills(&app, "ff00ff")), (1, 1));
+        // The pink square, selected as drawn, moved onto the blue one through Position.
+        live_move(&mut app, tr_noop!("Move"), "element.translate", json!({"dx": -300, "dy": -300}));
+        app.s.end_gesture();
+        app.run("edit.deselect", json!({}));
+        assert_eq!((fills(&app, "0000ff"), fills(&app, "ff00ff")), (0, 1), "the pink square replaced the blue one");
+    }
+
+    /// #533, #534: each filter in Properties is a card whose header folds it: folded, its
+    /// values are gone from the panel (and from the accessibility tree); unfolded, they are back.
+    #[test]
+    fn a_filter_folds_to_its_header() {
+        use egui::{Event, Modifiers, PointerButton, Pos2};
+        let ctx = egui::Context::default();
+        ctx.enable_accesskit();
+        let mut app = App::with_context(&ctx, anicraft_engine::Session::default(), Some(std::path::PathBuf::from("unused.png")));
+        app.show_panel(crate::dock::Panel::Properties);
+        app.run("draw.rect", json!({"x": 10, "y": 10, "w": 100, "h": 50, "fill": "#ff0000", "stroke": null}));
+        app.run("edit.select_all", json!({}));
+        app.run("modify.convert_to_symbol", json!({"name": "Clip", "kind": "movie_clip"}));
+        app.run("element.set_filters", json!({"filters": [{"type": "blur"}]}));
+        let screen = |events: Vec<Event>| egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(1600.0, 1400.0))), events, ..Default::default() };
+        let mut run = |app: &mut App, events: Vec<Event>| {
+            let mut out = ctx.run_ui(screen(events), |ui| app.frame(ui));
+            out.textures_delta.clear();
+            out.platform_output.accesskit_update.expect("the accessibility tree")
+        };
+        let find = |t: &egui::accesskit::TreeUpdate, label: &str| {
+            t.nodes.iter().map(|(_, n)| n).find(|n| n.label().is_some_and(|l| l.starts_with(label))).and_then(|n| n.bounds()).map(|b| Pos2::new(((b.x0 + b.x1) * 0.5) as f32, ((b.y0 + b.y1) * 0.5) as f32))
+        };
+        let click = |run: &mut dyn FnMut(&mut App, Vec<Event>) -> egui::accesskit::TreeUpdate, app: &mut App, at: Pos2| {
+            let press = |pressed| Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE };
+            run(app, vec![Event::PointerMoved(at)]);
+            run(app, vec![press(true)]);
+            run(app, vec![press(false)]);
+            run(app, Vec::new());
+            run(app, Vec::new())
+        };
+        run(&mut app, Vec::new());
+        let t = run(&mut app, Vec::new());
+        assert!(find(&t, "Blur blur X").is_some(), "the filter's values show");
+        let fold = find(&t, "Fold Blur").expect("the filter's fold button");
+        let t = click(&mut run, &mut app, fold);
+        assert!(find(&t, "Blur blur X").is_none(), "folded: only its header shows");
+        let unfold = find(&t, "Unfold Blur").expect("and it can be unfolded");
+        let t = click(&mut run, &mut app, unfold);
+        assert!(find(&t, "Blur blur X").is_some(), "unfolded: its values are back");
     }
 
     use crate::app::App;
@@ -3956,5 +4084,88 @@ mod tests {
         frames(&ctx, &mut app);
         let t = transform(&app);
         assert!((t.m[0] - 1.0).abs() < 1e-4 && (t.m[3] - m.m[3]).abs() < 1e-3, "still mirrored as dragged: {t:?}");
+    }
+
+    /// #530: the button at the top of a shape's properties turns a selected line into a fill
+    /// of that line, and leaves a fill that has no line as it is (no error, no undo step).
+    #[test]
+    fn the_shape_properties_button_turns_a_line_into_a_fill_and_leaves_a_fill_alone() {
+        use egui::accesskit::{Action, ActionRequest, Node, Role, TreeId};
+        use egui::{Event, Modifiers};
+
+        let ctx = egui::Context::default();
+        ctx.enable_accesskit();
+        let mut app = App::with_context(&ctx, Session::default(), Some(std::path::PathBuf::from("unused.png")));
+        let input = |events: Vec<Event>| egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1200.0))),
+            events,
+            ..Default::default()
+        };
+        let frame = |ctx: &egui::Context, app: &mut App, extra: Vec<Event>| -> Vec<(egui::accesskit::NodeId, Node)> {
+            let mut events = vec![Event::ModifiersChanged(Modifiers::NONE)];
+            events.extend(extra);
+            let mut out = ctx.run_ui(input(events), |ui| app.frame(ui));
+            out.textures_delta.clear();
+            out.platform_output.accesskit_update.map(|u| u.nodes).unwrap_or_default()
+        };
+        let settle = |ctx: &egui::Context, app: &mut App| {
+            let mut nodes = Vec::new();
+            for _ in 0..4 {
+                nodes = frame(ctx, app, Vec::new());
+            }
+            nodes
+        };
+        // The History panel names a step after its command, so once the button has been used
+        // there are two controls of this name: the one in Properties is the upper one.
+        let button = |nodes: &[(egui::accesskit::NodeId, Node)]| {
+            let named = nodes.iter().filter(|(_, n)| n.role() == Role::Button && n.label() == Some("Convert Lines to Fills"));
+            named.min_by(|a, b| a.1.bounds().map_or(f64::MAX, |r| r.y0).total_cmp(&b.1.bounds().map_or(f64::MAX, |r| r.y0))).map(|(id, n)| {
+                (*id, n.is_disabled(), n.supports_action(Action::Click) && n.supports_action(Action::Focus))
+            })
+        };
+        // The first shape's stroke, fill, and the size of its path on the stage.
+        let measured = |app: &App| {
+            let shown = app.s.visible_elements();
+            let e = shown.iter().find(|e| matches!(e.kind, ElementKind::Shape(_))).expect("a shape");
+            match &e.kind {
+                ElementKind::Shape(sh) => {
+                    let b = sh.path.bounds().transformed(&e.transform);
+                    (sh.stroke.is_some(), sh.fill.is_some(), b.width(), b.height())
+                }
+                _ => (false, false, 0.0, 0.0),
+            }
+        };
+
+        app.run("draw.line", json!({"x0": 40.0, "y0": 80.0, "x1": 240.0, "y1": 80.0, "stroke": "#112233", "stroke_width": 8, "cap": "none"})).expect("a line");
+        let nodes = settle(&ctx, &mut app);
+        let (id, disabled, pressable) = button(&nodes).expect("a shape's properties offer Convert Lines to Fills");
+        assert!(!disabled, "a selected line can be turned into a fill");
+        assert!(pressable, "reachable from the keyboard");
+        let (had_stroke, had_fill, w0, h0) = measured(&app);
+        assert!(had_stroke && !had_fill && h0 < w0, "a line, wider than it is tall: {w0} by {h0}");
+        let steps = app.s.history().undo_len();
+        let press = Event::AccessKitActionRequest(ActionRequest { action: Action::Click, target_tree: TreeId::ROOT, target_node: id, data: None });
+        frame(&ctx, &mut app, vec![press]);
+        settle(&ctx, &mut app);
+        let (stroke, fill, w1, h1) = measured(&app);
+        assert!(!stroke && fill, "the line is a fill");
+        assert!(h1 > h0 && w1 + 0.5 >= w0, "the fill covers a band around the line: {w0}×{h0} → {w1}×{h1}");
+        assert_eq!(app.s.history().undo_len(), steps + 1, "one undo step");
+        assert!(app.status.as_ref().is_some_and(|s| !s.error && s.text.contains("fill")), "the change is announced: {:?}", app.status.as_ref().map(|s| s.text.clone()));
+
+        // A fill on its own: the button stays, unavailable, and pressing it changes nothing.
+        app.run("edit.delete", json!({})).expect("removed");
+        app.run("draw.rect", json!({"x": 30.0, "y": 40.0, "w": 80.0, "h": 50.0, "fill": "#cc3333", "stroke": null})).expect("a fill");
+        let nodes = settle(&ctx, &mut app);
+        let (id, disabled, _) = button(&nodes).expect("a fill's properties still offer the button");
+        assert!(disabled, "a fill with no line cannot run it");
+        let doc = app.s.doc.clone();
+        let steps = app.s.history().undo_len();
+        let press = Event::AccessKitActionRequest(ActionRequest { action: Action::Click, target_tree: TreeId::ROOT, target_node: id, data: None });
+        frame(&ctx, &mut app, vec![press]);
+        settle(&ctx, &mut app);
+        assert_eq!(app.s.doc, doc, "the fill is unchanged");
+        assert_eq!(app.s.history().undo_len(), steps, "no undo step");
+        assert!(!app.status.as_ref().is_some_and(|s| s.error), "a fill is not reported as an error: {:?}", app.status.as_ref().map(|s| s.text.clone()));
     }
 }

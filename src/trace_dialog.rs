@@ -64,7 +64,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
     let Some(d) = &mut app.trace else { return };
     let (mut submit, mut cancel) = (false, false);
     crate::windows::new(ctx, tr!("Trace Bitmap"))
-        .id(egui::Id::new("trace_bitmap"))
+        .id(egui::Id::unique("trace_bitmap"))
         .collapsible(false)
         .resizable(false)
         .anchor(egui::Align2::CENTER_CENTER, [0.0, -80.0])

@@ -33,8 +33,8 @@ pub fn specs() -> Vec<CommandSpec> {
         ),
         c("timeline.set_label", "Frame Label", "", None, "{label, layer?, frame?}", true, set_label),
         c("timeline.goto", "Go to Frame", "", None, "{frame}", false, goto),
-        c("timeline.next_frame", "Next Frame", "Control", Some("."), "{}", false, |s, _| step(s, 1)),
-        c("timeline.prev_frame", "Previous Frame", "Control", Some(","), "{}", false, |s, _| step(s, -1)),
+        c("timeline.next_frame", "Next Frame", "Control", Some("."), "{} (on the last frame it stays there)", false, |s, _| step(s, 1)),
+        c("timeline.prev_frame", "Previous Frame", "Control", Some(","), "{} (on the first frame it stays there)", false, |s, _| step(s, -1)),
         c("timeline.first_frame", "Go to First Frame", "Control", Some("Home"), "{}", false, |s, _| {
             s.set_frame(0);
             Ok(json!({"frame": 0}))
@@ -287,6 +287,9 @@ fn insert_frame(s: &mut Session, p: &Value) -> Result<Value> {
     let mut frames = 0;
     for &id in &ids {
         let layer = s.layer_mut(Some(id))?;
+        if layer.kind == LayerKind::Folder {
+            return Err(EngineError::State("a folder holds layers, not frames; pick a layer inside it".into()));
+        }
         for _ in 0..count {
             if all && layer.keyframe_index_at(frame).is_none() && layer.end_frame() > frame {
                 // A gap (or the frames before the first key) under the playhead: insert an
@@ -824,9 +827,12 @@ fn goto(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"frame": s.frame}))
 }
 
+/// One frame on or back, stopping at the first and the last frame rather than going round
+/// (#561), as the arrow keys in the timeline do.
 fn step(s: &mut Session, d: i64) -> Result<Value> {
-    let n = i64::from(s.frame_count().max(1));
-    let f = (i64::from(s.frame) + d).rem_euclid(n);
+    let (now, last) = (i64::from(s.frame), i64::from(s.frame_count().max(1)) - 1);
+    // A playhead already past the last frame (on an empty cell) isn't pulled back by Next.
+    let f = (now + d).clamp(0, last.max(now));
     s.set_frame(f as u32);
     Ok(json!({"frame": s.frame}))
 }

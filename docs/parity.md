@@ -68,7 +68,7 @@ not this table, says what matters most.
 | Timeline panel | **done** | See Timeline. |
 | Library panel | **done** | See Symbols and Library. |
 | Colour and Swatches panels | **done** | See Colour. |
-| Align panel | **done** | Align, distribute, To Stage. Missing: Match Size and Space (P-017). |
+| Align panel | **done** | Align, distribute, space evenly, match size, To Stage. |
 | Transform and Info panels | **partial** | Position, scale, rotation, skew and the transformation point are rows in Properties; there is no separate Transform panel with Duplicate and Transform, and no Info panel with the pointer's colour and position (P-050). |
 | History panel | **done** | With saved commands ([ADR 0097](adr/0097-command-macros.md)). |
 | Scene panel | **done** | A scene menu on the edit bar and Modify › Scene ([ADR 0011](adr/0011-scenes.md)). |
@@ -97,7 +97,7 @@ not this table, says what matters most.
 
 | Feature | Status | Notes |
 |---|---|---|
-| Selection | **partial** | Raw shapes, objects, marquee, bend an edge, move a corner ([ADR 0041](adr/0041-selection-tool-on-raw-drawings.md), [ADR 0044](adr/0044-selection-across-layers.md)). Missing: a marquee that takes instances and objects it only touches ([#522](https://github.com/storytold/anicraft/issues/522)), Hide Edges ([#298](https://github.com/storytold/anicraft/issues/298)) (P-017). |
+| Selection | **partial** | Raw shapes, objects, marquee, bend an edge, move a corner ([ADR 0041](adr/0041-selection-tool-on-raw-drawings.md), [ADR 0044](adr/0044-selection-across-layers.md)). A marquee takes the instances and objects it touches, and View › Hide Edges hides the selection's marks ([ADR 0134](adr/0134-outside-parity-batch-zoom-outlines-and-egui-0-37.md)). Missing: a preference for the marquee to take only what it surrounds; the first-use hint about fills and outlines (P-017). |
 | Subselection | **done** | [ADR 0042](adr/0042-subselection-and-merging-everywhere.md), [ADR 0045](adr/0045-raw-points-and-raw-shapes-inside-symbols.md). |
 | Free Transform | **partial** | Scale, skew, rotate, the transformation point, a box that turns with the object ([ADR 0111](adr/0111-the-transformation-point-a-turning-box-and-layer-opacity.md)), Envelope ([ADR 0080](adr/0080-drawing-parity-leftovers.md)). Missing: Distort. Open bug: rotation on Windows and FreeBSD ([#479](https://github.com/storytold/anicraft/issues/479)), not reproduced on Windows 10 (P-005). |
 | Gradient Transform | **done** | Gradient and bitmap fills, Lock Fill. |
@@ -143,11 +143,11 @@ not this table, says what matters most.
 | Combine Objects: Union, Intersect, Punch, Crop | **done** | [ADR 0073](adr/0073-groups-combine-objects-and-selection-modifiers.md). One layer at a time. |
 | Arrange (front, back, forward, backward) | **done** | |
 | Align, distribute | **done** | |
-| Match Size, Space evenly | **missing** | P-017. |
+| Match Size, Space evenly | **done** | `align.match_width`, `align.match_height`, `align.match_size`, `align.space_h`, `align.space_v` (#566). |
 | Transform: rotate 90°, flip, remove transform, scale and rotate by numbers | **done** | |
 | Envelope | **done** | [ADR 0080](adr/0080-drawing-parity-leftovers.md). Shapes and drawing objects only. |
 | Distort | **missing** | P-020. |
-| Modify › Shape: Convert Lines to Fills, Expand Fill, Soften Fill Edges | **done** | [ADR 0109](adr/0109-shape-commands-picker-eyedropper-and-transformation-origins.md). |
+| Modify › Shape: Convert Lines to Fills, Expand Fill, Soften Fill Edges | **done** | [ADR 0109](adr/0109-shape-commands-picker-eyedropper-and-transformation-origins.md). Properties repeats Convert Lines to Fills at the top of a shape's rows; with only a fill selected the button is unavailable. |
 | Modify › Shape: Smooth, Straighten, Advanced Smooth, Optimize | **missing** | P-020 ([#510](https://github.com/storytold/anicraft/issues/510)). |
 | Stroke styles: solid, dashed, dotted; caps, joins, miter | **done** | [ADR 0046](adr/0046-stroke-caps-joins-and-dashes.md). |
 | Stroke styles: ragged, stipple, hatched | **missing** in authoring | They import from Animate files as solid lines and the report says so† (P-032). |
@@ -237,7 +237,7 @@ not this table, says what matters most.
 | Span length by dragging | **done** | [ADR 0083](adr/0083-motion-editor-and-timeline-retiming.md). |
 | Convert to Keyframes | **done** | [#272](https://github.com/storytold/anicraft/issues/272). |
 | Reverse Frames | **missing** | P-021. |
-| Distribute to Layers, Distribute to Keyframes | **missing** | P-021. |
+| Distribute to Layers, Distribute to Keyframes | **partial** | Distribute to Layers: `modify.distribute_to_layers` (#517; objects, not raw shapes or tweened keyframes). Missing: Distribute to Keyframes (P-021). |
 | Convert a tween to frame-by-frame animation | **missing** | P-021. Bake to Keyframes exists for data bindings only. |
 | Frame labels | **partial** | Names only. Missing: comment and anchor labels (comments in Animate files are dropped and reported) (P-021). |
 | Onion skin: markers, colours, outlines, per layer | **done** | [ADR 0047](adr/0047-onion-skin-and-edit-multiple-frames.md), [ADR 0061](adr/0061-timeline-polish.md). |
@@ -434,8 +434,8 @@ not this table, says what matters most.
 
 | Feature | Status | Notes |
 |---|---|---|
-| `.fla` (zipped, CS5 and later) and XFL folders | **partial** | [ADR 0009](adr/0009-xfl-import.md), [ADR 0054](adr/0054-fla-packages-and-a-hardened-zip-reader.md); [opening Animate files](guide/opening-animate-files.md). Missing: motion tweens (P-023), armatures, camera, parenting, sound in and out points (P-043). Open reports: [#498](https://github.com/storytold/anicraft/issues/498), [#347](https://github.com/storytold/anicraft/issues/347) (P-006). |
-| Binary `.fla` (Flash 8 to CS4) | **missing** | Outside PRs [#478](https://github.com/storytold/anicraft/issues/478) and [#481](https://github.com/storytold/anicraft/issues/481), held on a provenance answer (P-039; [#163](https://github.com/storytold/anicraft/issues/163), [#289](https://github.com/storytold/anicraft/issues/289)). |
+| `.fla` (zipped, CS5 and later) and XFL folders | **partial** | [ADR 0009](adr/0009-xfl-import.md), [ADR 0054](adr/0054-fla-packages-and-a-hardened-zip-reader.md); [opening Animate files](guide/opening-animate-files.md). Missing: motion tweens (P-023), armatures, camera, parenting, sound in and out points (P-043). A stroke of a kind AniCraft doesn't know is drawn solid; a fill of an unknown kind, and the rest of an outline run after a command it can't read, are left out (the runs after it are drawn); each is counted in the report ([ADR 0133](adr/0133-an-animate-shape-is-never-cut-down-quietly.md)). Open reports, cause not confirmed: [#498](https://github.com/storytold/anicraft/issues/498), [#347](https://github.com/storytold/anicraft/issues/347) (P-006). |
+| Binary `.fla` (Flash 8 to CS4) | **partial** | [ADR 0120](adr/0120-legacy-fla-compound-binary-import.md); [opening Animate files](guide/opening-animate-files.md). Scenes, layers and folders, keyframes, shapes with gradients and dashed and dotted strokes, groups, symbol instances, classic and shape tweens, text, bitmaps, sounds on frames, frame scripts (kept, not run) and library folders ([#163](https://github.com/storytold/anicraft/issues/163); outside PRs [#478](https://github.com/storytold/anicraft/issues/478) and [#481](https://github.com/storytold/anicraft/issues/481)). Missing: filters, movie clip component settings, bitmap fills, sound in and out points; Flash MX 2004 and earlier (P-039; [#289](https://github.com/storytold/anicraft/issues/289)). |
 | Saving `.fla` or XFL | **missing** | AniCraft saves `.anicraft`. Not planned before import is complete (P-043). |
 | SWF artwork | **missing** | Needs a clean-room and licence decision first (P-048; [#172](https://github.com/storytold/anicraft/issues/172)). |
 | SVG | **done** | [ADR 0021](adr/0021-svg-clips-masks-text.md). Missing: matching the stage to the SVG ([#155](https://github.com/storytold/anicraft/issues/155), P-038). |

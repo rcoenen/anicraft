@@ -75,6 +75,8 @@ impl Accuracy {
 #[serde(default)]
 pub struct ViewAids {
     pub rulers: bool,
+    /// Hide the stage's selection marks, leaving the selection and tool handles in place.
+    pub hide_edges: bool,
     pub show_grid: bool,
     pub show_guides: bool,
     /// Guides can't be dragged (commands that move or delete one refuse too).
@@ -89,7 +91,7 @@ pub struct ViewAids {
 impl Default for ViewAids {
     fn default() -> Self {
         // As in Animate: guides show and snap; the rulers, grid and pixel snapping are off.
-        ViewAids { rulers: false, show_grid: false, show_guides: true, lock_guides: false, snap_grid: false, snap_guides: true, snap_pixels: false, grid_accuracy: Accuracy::Normal, guide_accuracy: Accuracy::Normal }
+        ViewAids { rulers: false, hide_edges: false, show_grid: false, show_guides: true, lock_guides: false, snap_grid: false, snap_guides: true, snap_pixels: false, grid_accuracy: Accuracy::Normal, guide_accuracy: Accuracy::Normal }
     }
 }
 

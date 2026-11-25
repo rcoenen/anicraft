@@ -267,7 +267,7 @@ pub fn begin(dir: Option<PathBuf>) -> Vec<String> {
         previous(info);
     }));
     let unix = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
-    line(&format!("AniCraft {} ({}), {} {}, started at {unix} (Unix time)", env!("CARGO_PKG_VERSION"), crate::app::RELEASE_STAGE, std::env::consts::OS, std::env::consts::ARCH));
+    line(&format!("{} {} ({}), {} {}, started at {unix} (Unix time)", crate::platform::name(), env!("ANICRAFT_BUILT_VERSION"), crate::app::RELEASE_STAGE, std::env::consts::OS, std::env::consts::ARCH));
     if let Some((l, left)) = &lost {
         line(&format!("a session lost its graphics device with {l}: trying it late ({left} more start(s) counting this one)"));
     }

@@ -562,7 +562,7 @@ fn draw_sweep_alpha(painter: &egui::Painter, xf: Xf, o: &BrushOptions, samples: 
 /// One reused texture for the live wash, so a stroke does not leak a texture every frame (and
 /// one for each stroke that waits to be painted: a few at most).
 fn sweep_texture(ctx: &egui::Context, image: egui::ColorImage, slot: usize) -> egui::TextureHandle {
-    let id = if slot == 0 { egui::Id::new("anicraft.brush.sweep") } else { egui::Id::new(("anicraft.brush.sweep", slot)) };
+    let id = if slot == 0 { egui::Id::unique("anicraft.brush.sweep") } else { egui::Id::unique(("anicraft.brush.sweep", slot)) };
     let options = egui::TextureOptions::LINEAR;
     if let Some(mut tex) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
         tex.set(image, options);
@@ -676,7 +676,7 @@ mod tests {
         // A stroke that crosses itself, with a dab's worth of pressure readings.
         app.brush_samples = vec![(Vec2::new(40.0, 40.0), Some(0.8)), (Vec2::new(160.0, 120.0), Some(0.6)), (Vec2::new(40.0, 120.0), None), (Vec2::new(160.0, 40.0), Some(0.9))];
         let xf = Xf { origin: egui::pos2(20.0, 20.0), zoom: 1.5 };
-        let sweep = egui::Id::new("anicraft.brush.sweep");
+        let sweep = egui::Id::unique("anicraft.brush.sweep");
         let texture = |ctx: &egui::Context| ctx.data(|d| d.get_temp::<egui::TextureHandle>(sweep));
         let frame = |app: &App| {
             let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, egui::vec2(800.0, 600.0))), ..Default::default() };

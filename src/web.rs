@@ -109,7 +109,7 @@ fn fonts() -> Vec<Arc<[u8]>> {
     if faces.is_empty()
         && let Some(f) = egui::FontDefinitions::default().font_data.get("Ubuntu-Light") // i18n-exempt: a font key
     {
-        faces.push(Arc::from(f.font.as_ref()));
+        faces.push(Arc::from((*f.font).as_ref()));
     }
     faces
 }

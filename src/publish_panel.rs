@@ -287,7 +287,7 @@ fn settings_window(app: &mut App, ctx: &egui::Context) {
     }
     let mut open = true;
     let at = ctx.content_rect().center() - egui::vec2(330.0, 260.0);
-    let shown = crate::windows::new(ctx, tr!("Publish Settings")).id(egui::Id::new("publish_settings")).open(&mut open).default_pos(at).default_width(660.0).resizable(true).collapsible(false).show(ctx, |ui| settings(app, ui));
+    let shown = crate::windows::new(ctx, tr!("Publish Settings")).id(egui::Id::unique("publish_settings")).open(&mut open).default_pos(at).default_width(660.0).resizable(true).collapsible(false).show(ctx, |ui| settings(app, ui));
     crate::a11y::name_title_bar(&shown, tr!("Publish Settings"));
     if !open {
         app.publish.open = false;
@@ -317,7 +317,7 @@ fn settings(app: &mut App, ui: &mut egui::Ui) {
                     }
                     let font = crate::theme::font(Type::Body);
                     ui.painter().text(egui::pos2(r.left() + 8.0, r.center().y), egui::Align2::LEFT_CENTER, label(f), font, crate::theme::color(Type::Body));
-                    crate::a11y::control(ui, &resp, egui::WidgetType::SelectableLabel, label(f), Some(sel));
+                    crate::a11y::control(ui, &resp, egui::Role::Button, label(f), Some(sel));
                     if resp.on_hover_text(about(f)).clicked() {
                         app.publish.selected = f;
                         app.publish.output_edit = None;
@@ -525,11 +525,13 @@ fn options(app: &mut App, ui: &mut egui::Ui, f: PublishFormat) {
         PublishFormat::PngSequence => {
             range_row(app, ui, f, p.png_sequence.range);
             scale_row(app, ui, f, p.png_sequence.scale);
+            check(app, ui, f, "background", p.png_sequence.background, tr!("Stage colour as background"), tr!("Off: transparent"));
             form_note(ui, FORM_LABEL_DIALOG, text(Type::Caption, tr!("The output is a folder; the frames in it are frame_00001.png and on.")));
         }
         PublishFormat::Png => {
             frame_row(app, ui, f, p.png.frame);
             scale_row(app, ui, f, p.png.scale);
+            check(app, ui, f, "background", p.png.background, tr!("Stage colour as background"), tr!("Off: transparent"));
         }
         PublishFormat::Svg => frame_row(app, ui, f, p.svg.frame),
         PublishFormat::Audio => {
@@ -695,7 +697,7 @@ fn progress_window(app: &mut App, ctx: &egui::Context) {
     let mut open = true;
     let title = if running { tr!("Publishing") } else { tr!("Publish report") };
     let at = ctx.content_rect().center() - egui::vec2(220.0, 160.0);
-    let shown = crate::windows::new(ctx, title).id(egui::Id::new("publish_progress")).open(&mut open).default_pos(at).default_width(460.0).resizable(true).collapsible(false).show(ctx, |ui| {
+    let shown = crate::windows::new(ctx, title).id(egui::Id::unique("publish_progress")).open(&mut open).default_pos(at).default_width(460.0).resizable(true).collapsible(false).show(ctx, |ui| {
         if let Some(job) = &app.publish.job {
             job_rows(ui, job);
         } else if let Some(r) = &app.publish.report {

@@ -10,7 +10,7 @@ use crate::app::App;
 use crate::dock::{Group, Layout, Panel, Place, Side, Target, Zone};
 use crate::icons::Icon;
 use crate::theme::{self, T, Type, font, text};
-use egui::{Id, Pos2, Rect, Sense, Stroke, StrokeKind, WidgetType, pos2, vec2};
+use egui::{Id, Pos2, Rect, Sense, Stroke, StrokeKind, Role, pos2, vec2};
 use std::collections::{HashMap, HashSet};
 
 /// A side dock's group header (the band look of Properties and the Library before docking).
@@ -413,7 +413,7 @@ pub fn workspace(app: &mut App, ui: &mut egui::Ui) {
             strip(app, ui, side, zone, &layout, &mut acts);
             continue;
         }
-        let id = Id::new(("dock_zone", side, app.dock_view.epoch));
+        let id = Id::unique(("dock_zone", side, app.dock_view.epoch));
         let (auto, max, min) = if side.stacks() { (dock_w, (room.x * 0.5).max(MIN_SIDE + 20.0), MIN_SIDE) } else { (dock_h, (room.y * 0.6).max(200.0), MIN_ROW) };
         let size = zone.size.unwrap_or(auto).clamp(min, max);
         let panel = match side {
@@ -423,7 +423,8 @@ pub fn workspace(app: &mut App, ui: &mut egui::Ui) {
             Side::Bottom => egui::Panel::bottom(id),
         };
         let shown = panel.resizable(true).default_size(size).size_range(min..=max).frame(egui::Frame::NONE.fill(T.panel)).show(ui, |ui| zone_ui(app, ui, side, &zone.groups, &layout, &mut acts));
-        let resize = id.with("__resize");
+        // egui 0.37 salts a panel's id with the parent Ui's scope, and its resize handle with that.
+        let resize = ui.scope_id().with(id).with("__resize");
         if ctx.is_being_dragged(resize) {
             let r = shown.response.rect;
             app.dock.zone_mut(side).size = Some((if side.stacks() { r.width() } else { r.height() }).round());
@@ -466,7 +467,7 @@ impl DockView {
 /// The tools as a slim bar on a side of the editor, outside the docks, with a grip to drag
 /// them elsewhere (and their menu).
 fn tools_bar(app: &mut App, ui: &mut egui::Ui, side: Side, layout: &Layout, acts: &mut Vec<Act>) {
-    let id = if side == Side::Left { Id::new("tools") } else { Id::new(("tools", side)) };
+    let id = if side == Side::Left { Id::unique("tools") } else { Id::unique(("tools", side)) };
     let margin = if side.stacks() { egui::Margin { left: 0, right: 0, top: 2, bottom: 8 } } else { egui::Margin { left: 2, right: 8, top: 0, bottom: 0 } };
     let frame = egui::Frame::NONE.fill(T.panel).inner_margin(margin);
     let panel = match side {
@@ -494,8 +495,8 @@ fn tools_bar(app: &mut App, ui: &mut egui::Ui, side: Side, layout: &Layout, acts
 
 /// The tools bar's grip: drag it to move the tools, click it for their menu.
 fn grip(ui: &mut egui::Ui, r: Rect, across: bool, at: Where, layout: &Layout, acts: &mut Vec<Act>) {
-    let resp = ui.interact(r, Id::new("dock_grip_tools"), Sense::click_and_drag());
-    a11y::control(ui, &resp, WidgetType::Button, tr!("Tools panel menu"), None);
+    let resp = ui.interact(r, Id::unique("dock_grip_tools"), Sense::click_and_drag());
+    a11y::control(ui, &resp, Role::Button, tr!("Tools panel menu"), None);
     let hot = resp.hovered() || resp.has_focus() || resp.dragged();
     if resp.hovered() {
         ui.painter().rect_filled(r, T.rc(), T.hover);
@@ -511,7 +512,7 @@ fn grip(ui: &mut egui::Ui, r: Rect, across: bool, at: Where, layout: &Layout, ac
         }
     }
     if resp.drag_started() {
-        ui.ctx().data_mut(|d| d.insert_temp(Id::new("dock_drag_start"), Some(Drag::Panel(Panel::Tools))));
+        ui.ctx().data_mut(|d| d.insert_temp(Id::unique("dock_drag_start"), Some(Drag::Panel(Panel::Tools))));
     }
     let resp = resp.on_hover_text(tr!("Drag to move the tools; click for more"));
     egui::Popup::menu(&resp).show(|ui| panel_menu(ui, at, Panel::Tools, layout, acts));
@@ -552,7 +553,7 @@ fn zone_ui(app: &mut App, ui: &mut egui::Ui, side: Side, groups: &[Group], layou
         } else {
             Rect::from_center_size(pos2(area.left() + edge, area.center().y), vec2(6.0, area.height()))
         };
-        let id = Id::new(("dock_split", side, i));
+        let id = Id::unique(("dock_split", side, i));
         let resp = ui.interact(grab, id, Sense::drag());
         let (an, bn) = (a.shown().map_or("", |p| crate::i18n::t(p.label())), b.shown().map_or("", |p| crate::i18n::t(p.label())));
         ui.ctx().accesskit_node_builder(id, |node| {
@@ -622,10 +623,10 @@ fn band_header(ui: &mut egui::Ui, side: Side, g: &Group, rect: Rect, first_group
     crate::theme::accent_bar(&p, Rect::from_min_size(rect.left_top() + vec2(0.0, 1.0), vec2(3.0, rect.height() - 1.0)));
     // Fold: the group keeps only its header, giving the others its room.
     let chevron = Rect::from_center_size(pos2(rect.left() + 17.0, rect.center().y), vec2(22.0, 22.0));
-    let resp = ui.interact(chevron, Id::new(("dock_fold", shown.id())), Sense::click());
+    let resp = ui.interact(chevron, Id::unique(("dock_fold", shown.id())), Sense::click());
     let open = !g.folded;
     let name = crate::i18n::t(shown.label());
-    resp.widget_info(|| egui::WidgetInfo::selected(WidgetType::CollapsingHeader, true, open, name));
+    resp.widget_info(|| egui::WidgetInfo::selected(Role::DisclosureTriangle, true, open, name));
     a11y::focus_ring(ui, &resp);
     let hot = resp.hovered() || resp.has_focus();
     crate::icons::paint(&p, Rect::from_center_size(chevron.center(), vec2(14.0, 14.0)), if open { Icon::ChevronDown } else { Icon::ChevronRight }, if hot { T.text } else { T.text_dim });
@@ -638,7 +639,7 @@ fn band_header(ui: &mut egui::Ui, side: Side, g: &Group, rect: Rect, first_group
         let r = Rect::from_center_size(pos2(right - MENU_W * 0.5 + 2.0, rect.center().y), vec2(MENU_W - 4.0, 24.0));
         right -= MENU_W - 2.0;
         let icon = if side == Side::Left { Icon::First } else { Icon::Last };
-        if icon_button(ui, r, Id::new(("dock_collapse", side)), icon, tr!("Collapse to icons"), None).clicked() {
+        if icon_button(ui, r, Id::unique(("dock_collapse", side)), icon, tr!("Collapse to icons"), None).clicked() {
             acts.push(Act::Collapse(side, true));
         }
     }
@@ -659,7 +660,7 @@ fn band_header(ui: &mut egui::Ui, side: Side, g: &Group, rect: Rect, first_group
     }
     let total = widths.iter().sum::<f32>() + TAB_GAP * widths.len().saturating_sub(1) as f32;
     let overflow = (total - strip.width()).max(0.0);
-    let key = Id::new(("dock_tab_scroll", shown.id(), g.tabs.first().map_or("", |t| t.id())));
+    let key = Id::unique(("dock_tab_scroll", shown.id(), g.tabs.first().map_or("", |t| t.id())));
     let (mut scroll, last_active) = ui.ctx().data(|d| d.get_temp::<(f32, usize)>(key)).unwrap_or((0.0, usize::MAX));
     if overflow > 0.0 && ui.rect_contains_pointer(strip) {
         let d = ui.input(|i| i.smooth_scroll_delta);
@@ -675,7 +676,7 @@ fn band_header(ui: &mut egui::Ui, side: Side, g: &Group, rect: Rect, first_group
     ui.ctx().data_mut(|d| d.insert_temp(key, (scroll, active_i)));
     ui.ctx().data_mut(|d| {
         for t in &g.tabs {
-            d.remove::<(Rect, bool)>(Id::new(("dock_tab_rect", t.id())));
+            d.remove::<(Rect, bool)>(Id::unique(("dock_tab_rect", t.id())));
         }
     });
     let mut x = strip.left() - scroll;
@@ -691,7 +692,7 @@ fn band_header(ui: &mut egui::Ui, side: Side, g: &Group, rect: Rect, first_group
         let cut = natural.get(i).is_some_and(|n| *n > w + 0.5);
         let galley = if cut { elided(&p, name, w - TAB_PAD) } else { p.layout_no_wrap(name.to_string(), font(Type::Heading), T.text) };
         let resp = tab_widget(ui, *tab, r, shown_r, i == active_i, &galley, several);
-        ui.ctx().data_mut(|d| d.insert_temp(Id::new(("dock_tab_rect", tab.id())), (shown_r, cut)));
+        ui.ctx().data_mut(|d| d.insert_temp(Id::unique(("dock_tab_rect", tab.id())), (shown_r, cut)));
         tab_actions(ui, at, *tab, &resp, cut, layout, acts);
         if i == active_i {
             a11y::anchor(ui, region(*tab), Rect::from_min_max(rect.min, pos2(rect.right(), ui.max_rect().bottom().max(rect.bottom()))), &resp);
@@ -715,7 +716,7 @@ fn band_header(ui: &mut egui::Ui, side: Side, g: &Group, rect: Rect, first_group
 /// A small square button drawn with an icon, named for screen readers, with its tooltip.
 pub(crate) fn icon_button(ui: &mut egui::Ui, r: Rect, id: Id, icon: Icon, name: &str, selected: Option<bool>) -> egui::Response {
     let resp = ui.interact(r, id, Sense::click());
-    a11y::control(ui, &resp, if selected.is_some() { WidgetType::SelectableLabel } else { WidgetType::Button }, name, selected);
+    a11y::control(ui, &resp, Role::Button, name, selected);
     let on = selected == Some(true);
     if on {
         ui.painter().rect_filled(r, T.rc(), T.active);
@@ -802,9 +803,9 @@ fn elided(p: &egui::Painter, name: &str, width: f32) -> std::sync::Arc<egui::Gal
 /// A side dock's tab: named and selectable for screen readers, dragged to move its panel.
 /// `shown` is the part of `r` inside the tab strip (it scrolls).
 fn tab_widget(ui: &mut egui::Ui, tab: Panel, r: Rect, shown: Rect, active: bool, galley: &std::sync::Arc<egui::Galley>, several: bool) -> egui::Response {
-    let resp = ui.interact(shown, Id::new(("dock_tab", tab.id())), Sense::click_and_drag());
+    let resp = ui.interact(shown, Id::unique(("dock_tab", tab.id())), Sense::click_and_drag());
     let name = crate::i18n::t(tab.label());
-    resp.widget_info(|| egui::WidgetInfo::selected(WidgetType::SelectableLabel, true, active, name));
+    resp.widget_info(|| egui::WidgetInfo::selected(Role::Button, true, active, name));
     let p = ui.painter().with_clip_rect(shown.intersect(ui.painter().clip_rect()));
     if resp.hovered() && !active {
         p.rect_filled(r, T.rc(), T.hover);
@@ -825,7 +826,7 @@ fn tab_widget(ui: &mut egui::Ui, tab: Panel, r: Rect, shown: Rect, active: bool,
 /// move it (drag). A `cut` name shows whole in the tooltip.
 fn tab_actions(ui: &egui::Ui, at: Where, tab: Panel, resp: &egui::Response, cut: bool, layout: &Layout, acts: &mut Vec<Act>) {
     if resp.drag_started() {
-        ui.ctx().data_mut(|d| d.insert_temp(Id::new("dock_drag_start"), Some(Drag::Panel(tab))));
+        ui.ctx().data_mut(|d| d.insert_temp(Id::unique("dock_drag_start"), Some(Drag::Panel(tab))));
     }
     if resp.double_clicked() && matches!(at, Where::Docked { side, .. } if side.stacks()) {
         acts.push(Act::Fold(tab));
@@ -839,9 +840,9 @@ fn tab_actions(ui: &egui::Ui, at: Where, tab: Panel, resp: &egui::Response, cut:
 
 /// The ≡ button at the end of a group's header: the shown panel's menu.
 pub(crate) fn menu_button(ui: &mut egui::Ui, at: Where, p: Panel, r: Rect, layout: &Layout, acts: &mut Vec<Act>) {
-    let resp = ui.interact(r, Id::new(("dock_menu", p.id(), wkey(at))), Sense::click());
+    let resp = ui.interact(r, Id::unique(("dock_menu", p.id(), wkey(at))), Sense::click());
     let name = tr!("{panel} panel menu", panel = crate::i18n::t(p.label()));
-    a11y::control(ui, &resp, WidgetType::Button, &name, None);
+    a11y::control(ui, &resp, Role::Button, &name, None);
     let hot = resp.hovered() || resp.has_focus();
     if resp.hovered() {
         ui.painter().rect_filled(r, T.rc(), T.hover);
@@ -1013,7 +1014,7 @@ pub fn panel_body(app: &mut App, ui: &mut egui::Ui, p: Panel) {
 /// A dock collapsed to icons: a strip with the expand button, then one icon per panel (named
 /// for screen readers, its name as its tooltip); a click opens the panel over the stage.
 fn strip(app: &mut App, ui: &mut egui::Ui, side: Side, zone: &Zone, layout: &Layout, acts: &mut Vec<Act>) {
-    let id = Id::new(("dock_strip", side));
+    let id = Id::unique(("dock_strip", side));
     let panel = match side {
         Side::Left => egui::Panel::left(id),
         Side::Right => egui::Panel::right(id),
@@ -1046,7 +1047,7 @@ fn strip(app: &mut App, ui: &mut egui::Ui, side: Side, zone: &Zone, layout: &Lay
             Side::Bottom => Icon::ChevronUp,
         };
         let r = Rect::from_min_size(at, vec2(b, b * 0.75));
-        if icon_button(ui, r, Id::new(("dock_expand", side)), expand, tr!("Expand the dock"), None).clicked() {
+        if icon_button(ui, r, Id::unique(("dock_expand", side)), expand, tr!("Expand the dock"), None).clicked() {
             acts.push(Act::Collapse(side, false));
         }
         step(&mut at, b * 0.75 + 4.0);
@@ -1068,7 +1069,7 @@ fn strip(app: &mut App, ui: &mut egui::Ui, side: Side, zone: &Zone, layout: &Lay
                 let open = flyout == Some(*p);
                 let name = crate::i18n::t(p.label());
                 // Dragged, the icon moves its panel, as a tab does.
-                let resp = icon_button(ui, r, Id::new(("dock_icon", p.id())), panel_icon(*p), name, Some(open)).interact(Sense::drag());
+                let resp = icon_button(ui, r, Id::unique(("dock_icon", p.id())), panel_icon(*p), name, Some(open)).interact(Sense::drag());
                 if resp.drag_started() && app.dock_view.drag.is_none() {
                     app.dock_view.drag = Some(Drag::Panel(*p));
                 }
@@ -1113,7 +1114,7 @@ fn flyout(app: &mut App, ctx: &egui::Context, auto: (f32, f32), layout: &Layout,
     let Some(Place::Docked { group, .. }) = layout.place(p) else { return };
     let tabs = layout.zone(side).groups.get(group).map_or(1, |g| g.tabs.len());
     let at = Where::Docked { side, folded: false, tabs };
-    egui::Area::new(Id::new("dock_flyout")).order(egui::Order::Foreground).fixed_pos(rect.min).constrain(false).show(ctx, |ui| {
+    egui::Area::new(Id::unique("dock_flyout")).order(egui::Order::Foreground).fixed_pos(rect.min).constrain(false).show(ctx, |ui| {
         ui.set_clip_rect(rect);
         ui.painter().rect_filled(rect, theme::SQUARE, T.panel);
         ui.painter().rect_stroke(rect, theme::SQUARE, Stroke::new(1.0, T.border), StrokeKind::Inside);
@@ -1125,7 +1126,7 @@ fn flyout(app: &mut App, ctx: &egui::Context, auto: (f32, f32), layout: &Layout,
         let tr = Rect::from_min_max(header.min + vec2(12.0, 0.0), pos2(header.right() - 2.0 * MENU_W - 6.0, header.bottom()));
         ui.painter().with_clip_rect(tr).galley(pos2(tr.left(), header.center().y - galley.rect.height() * 0.5), galley, theme::color(Type::Heading));
         let close = Rect::from_center_size(pos2(header.right() - MENU_W * 0.5 - 2.0, header.center().y), vec2(MENU_W - 2.0, 24.0));
-        let resp = icon_button(ui, close, Id::new("dock_flyout_close"), Icon::ChevronRight, &tr!("Close {panel}", panel = title), None);
+        let resp = icon_button(ui, close, Id::unique("dock_flyout_close"), Icon::ChevronRight, &tr!("Close {panel}", panel = title), None);
         // Its first control: Ctrl+F6's stop while it is open.
         a11y::anchor(ui, region(p), rect, &resp);
         if resp.clicked() {
@@ -1143,7 +1144,7 @@ fn flyout(app: &mut App, ctx: &egui::Context, auto: (f32, f32), layout: &Layout,
     let popup = egui::Popup::is_any_open(ctx);
     if app.dock_view.drag.is_none() && !popup && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
         acts.push(Act::Flyout(None));
-        let icon = Id::new(("dock_icon", p.id()));
+        let icon = Id::unique(("dock_icon", p.id()));
         ctx.memory_mut(|m| m.request_focus(icon));
         return;
     }
@@ -1234,7 +1235,7 @@ pub(crate) fn drop_target(view: &DockView, layout: &Layout, what: Drag, at: Pos2
 /// While a tab or a floating window is dragged: where it would go, shown over the editor;
 /// dropped, it goes there. Esc cancels.
 fn drag_and_drop(app: &mut App, ctx: &egui::Context, acts: &mut Vec<Act>) {
-    if let Some(d) = ctx.data_mut(|d| d.remove_temp::<Option<Drag>>(Id::new("dock_drag_start"))).flatten() {
+    if let Some(d) = ctx.data_mut(|d| d.remove_temp::<Option<Drag>>(Id::unique("dock_drag_start"))).flatten() {
         app.dock_view.drag = Some(d);
         app.dock_view.from_window = None;
     }
@@ -1273,7 +1274,7 @@ fn drag_and_drop(app: &mut App, ctx: &egui::Context, acts: &mut Vec<Act>) {
         return;
     }
     ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
-    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, Id::new("dock_drop")));
+    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, Id::unique("dock_drop")));
     if let Some(r) = area {
         painter.rect_filled(r, theme::SQUARE, theme::dock_drop());
         painter.rect_stroke(r, theme::SQUARE, Stroke::new(2.0, T.accent), StrokeKind::Inside);
@@ -1607,10 +1608,24 @@ mod tests {
         assert!(fit_tabs(&[], 10.0).is_empty());
     }
 
+    /// Dragging a dock's edge keeps the new size in the layout (so it is saved with the
+    /// workspace), and the handle is the one named for screen readers.
+    #[test]
+    fn dragging_a_dock_edge_keeps_its_new_size() {
+        let (mut app, ctx) = app();
+        settle(&ctx, &mut app);
+        let Some(stage) = app.dock_view.stage else { panic!("stage drawn") };
+        let before = app.dock.right.size;
+        let from = egui::pos2(stage.right() + 1.0, stage.center().y);
+        drag(&ctx, &mut app, from, from - vec2(60.0, 0.0));
+        let Some(after) = app.dock.right.size else { panic!("the right dock's size is kept after a drag (was {before:?})") };
+        assert!(before.is_none_or(|b| after > b + 30.0), "the dock grew: {before:?} -> {after}");
+    }
+
     #[test]
     fn at_the_narrowest_dock_no_tab_runs_under_the_menu_button() {
         let tabs = [Panel::Library, Panel::MovieExplorer, Panel::LayerDepth];
-        let rect = |ctx: &egui::Context, t: Panel| ctx.data(|m| m.get_temp::<(Rect, bool)>(Id::new(("dock_tab_rect", t.id()))));
+        let rect = |ctx: &egui::Context, t: Panel| ctx.data(|m| m.get_temp::<(Rect, bool)>(Id::unique(("dock_tab_rect", t.id()))));
         for size in [MIN_SIDE, 260.0, 292.0] {
             // Three long names in one group, the dock at `size` (egui keeps a panel's size, so
             // a fresh window for each).
@@ -1703,7 +1718,7 @@ mod tests {
         settle(&ctx, &mut app);
         let id = app.dock.floating[0].id;
         assert!(app.dock_view.placed.contains(&id), "drawn inside the editor");
-        let area = ctx.memory(|m| m.area_rect(Id::new(("dock_float", id))));
+        let area = ctx.memory(|m| m.area_rect(Id::unique(("dock_float", id))));
         assert!(area.is_some_and(|r| (r.left() - 300.0).abs() < 1.0 && (r.top() - 200.0).abs() < 1.0), "where it was put: {area:?}");
         // A window of its own where there can be one: drawn in its viewport, not inside.
         let (mut app, ctx) = self::app();
@@ -1775,14 +1790,14 @@ mod tests {
         settle(&ctx, &mut app);
         // The grip at the top of the tools' bar, dragged to the stage's right edge: the bar
         // goes to the right.
-        let grip = ctx.read_response(Id::new("dock_grip_tools")).map(|r| r.rect.center());
+        let grip = ctx.read_response(Id::unique("dock_grip_tools")).map(|r| r.rect.center());
         let stage = app.dock_view.stage;
         let (Some(grip), Some(stage)) = (grip, stage) else { panic!("drawn") };
         drag(&ctx, &mut app, grip, pos2(stage.right() - 10.0, stage.center().y));
         assert_eq!(app.dock.tools_bar, Some(Side::Right));
         // Onto the Library's header: a tab there, drawn as a grid of tools.
         let library = app.dock_view.drawn.iter().find(|d| d.first == Panel::Library).map(|d| d.header.center());
-        let grip = ctx.read_response(Id::new("dock_grip_tools")).map(|r| r.rect.center());
+        let grip = ctx.read_response(Id::unique("dock_grip_tools")).map(|r| r.rect.center());
         let (Some(library), Some(grip)) = (library, grip) else { panic!("drawn") };
         drag(&ctx, &mut app, grip, library);
         assert_eq!(app.dock.tools_bar, None);
@@ -1825,7 +1840,7 @@ mod tests {
         click(&ctx, &mut app, colour);
         assert!(app.dock.is_shown(Panel::Colour));
         // The window dragged by its title bar onto the Library's header: both tabs join it.
-        let title = ctx.memory(|m| m.area_rect(Id::new(("dock_float", id)))).map(|r| r.left_top() + vec2(30.0, 12.0));
+        let title = ctx.memory(|m| m.area_rect(Id::unique(("dock_float", id)))).map(|r| r.left_top() + vec2(30.0, 12.0));
         let library = app.dock_view.drawn.iter().find(|d| d.first == Panel::Library).map(|d| d.header.center());
         let (Some(title), Some(library)) = (title, library) else { panic!("drawn") };
         frame(&ctx, &mut app, pointer(title, None));
@@ -1846,7 +1861,7 @@ mod tests {
     fn a_dock_collapses_to_icons_with_flyouts() {
         let (mut app, ctx) = app();
         settle(&ctx, &mut app);
-        let collapse = ctx.read_response(Id::new(("dock_collapse", Side::Right))).map(|r| r.rect.center());
+        let collapse = ctx.read_response(Id::unique(("dock_collapse", Side::Right))).map(|r| r.rect.center());
         let Some(collapse) = collapse else { panic!("drawn") };
         click(&ctx, &mut app, collapse);
         assert!(app.dock.right.collapsed);
@@ -1855,12 +1870,12 @@ mod tests {
         assert!((strip.width() - STRIP).abs() < 2.0, "a slim strip: {}", strip.width());
         let stage = app.dock_view.stage.map_or(0.0, |s| s.width());
         // An icon opens its panel over the stage, which keeps its size.
-        let icon = ctx.read_response(Id::new(("dock_icon", Panel::Library.id()))).map(|r| r.rect.center());
+        let icon = ctx.read_response(Id::unique(("dock_icon", Panel::Library.id()))).map(|r| r.rect.center());
         let Some(icon) = icon else { panic!("an icon") };
         click(&ctx, &mut app, icon);
         assert_eq!(app.dock_view.flyout, Some(Panel::Library));
         assert!(app.panel_visible(Panel::Library) && !app.panel_visible(Panel::Properties));
-        let fly = ctx.memory(|m| m.area_rect(Id::new("dock_flyout")));
+        let fly = ctx.memory(|m| m.area_rect(Id::unique("dock_flyout")));
         assert!(fly.is_some_and(|r| r.right() <= strip.left() + 1.0 && r.width() >= MIN_SIDE), "beside the strip: {fly:?}");
         assert_eq!(app.dock_view.stage.map_or(0.0, |s| s.width()), stage);
         // Esc closes it; so does a click outside it.
@@ -1878,7 +1893,7 @@ mod tests {
         assert_eq!(app.dock_view.flyout, Some(Panel::Properties));
         assert!(a11y::order(&ctx).contains(&Region::Panel(Panel::Properties)));
         // Expanded again: the dock as it was.
-        let expand = ctx.read_response(Id::new(("dock_expand", Side::Right))).map(|r| r.rect.center());
+        let expand = ctx.read_response(Id::unique(("dock_expand", Side::Right))).map(|r| r.rect.center());
         let Some(expand) = expand else { panic!("drawn") };
         click(&ctx, &mut app, expand);
         assert!(!app.dock.right.collapsed && app.dock_view.flyout.is_none());

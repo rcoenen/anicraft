@@ -47,6 +47,7 @@ pub fn specs() -> Vec<CommandSpec> {
             reset_transformation_point,
         ),
         c("modify.remove_transform", "Remove Transform", "Modify/Transform", Some("Ctrl+Shift+Z"), "{}", true, |s, p| s.each_layer(true, |s| remove_transform(s, p))),
+        c("modify.distribute_to_layers", "Distribute to Layers", "Modify/Timeline", Some("Ctrl+Shift+D"), "{} each selected object (symbol instance, group, drawing object, text, bitmap) on the keyframe at the playhead moves to a new layer of its own just above its layer, named after its symbol when it is an instance, for the same frames. Each new layer keeps its layer's settings (camera depth, attachment, the layer it follows). Raw shapes stay where they are; refused for a tweened keyframe or the end of a tween, an instance that goes on from the keyframe before or after, a layer below full opacity, and mask, guide and other special layers → {layers: [new layer ids], left_raw}", true, distribute_to_layers),
         c("align.left", "Left", "Modify/Align", Some("Ctrl+Alt+1"), "{to_stage?}", true, |s, p| align(s, p, Edge::Left)),
         c("align.hcenter", "Horizontal Center", "Modify/Align", Some("Ctrl+Alt+2"), "{to_stage?}", true, |s, p| align(s, p, Edge::HCenter)),
         c("align.right", "Right", "Modify/Align", Some("Ctrl+Alt+3"), "{to_stage?}", true, |s, p| align(s, p, Edge::Right)),
@@ -55,6 +56,11 @@ pub fn specs() -> Vec<CommandSpec> {
         c("align.bottom", "Bottom", "Modify/Align", Some("Ctrl+Alt+6"), "{to_stage?}", true, |s, p| align(s, p, Edge::Bottom)),
         c("align.distribute_h", "Distribute Horizontal Centers", "Modify/Align", None, "{}", true, |s, _| distribute(s, true)),
         c("align.distribute_v", "Distribute Vertical Centers", "Modify/Align", None, "{}", true, |s, _| distribute(s, false)),
+        c("align.match_width", "Match Width", "Modify/Align", None, "{to_stage?} sets each selected object's width to the widest one's (to_stage: the stage's width), keeping its height and its left edge; an object with no width (a vertical line) keeps none", true, |s, p| match_size(s, p, true, false)),
+        c("align.match_height", "Match Height", "Modify/Align", None, "{to_stage?} sets each selected object's height to the tallest one's (to_stage: the stage's height), keeping its width and its top edge; an object with no height (a horizontal line) keeps none", true, |s, p| match_size(s, p, false, true)),
+        c("align.match_size", "Match Width and Height", "Modify/Align", None, "{to_stage?} sets each selected object's width to the widest one's and its height to the tallest one's, which may be two different objects (to_stage: the stage's width and height), keeping its top-left corner; a side an object has no extent along stays as it is", true, |s, p| match_size(s, p, true, true)),
+        c("align.space_h", "Space Evenly Horizontally", "Modify/Align", None, "{} moves the selected objects (three or more) so the gaps between them across are equal; the first and last (by their left edges) stay where they are. Refused when the objects overlap too much to keep their order", true, |s, _| space(s, true)),
+        c("align.space_v", "Space Evenly Vertically", "Modify/Align", None, "{} moves the selected objects (three or more) so the gaps between them down are equal; the first and last (by their top edges) stay where they are. Refused when the objects overlap too much to keep their order", true, |s, _| space(s, false)),
     ]
 }
 
@@ -486,7 +492,7 @@ fn transform_origin(s: &mut Session, p: &Value) -> Result<Value> {
 ///   transformed about its centre in both modes.
 pub fn transform_origins(s: &Session, mode: TransformOrigin) -> Vec<(Vec<Item>, Vec2)> {
     let els: std::collections::HashMap<Item, Arc<Element>> = s.selected_elements().into_iter().map(|(l, e)| ((l, e.id), e)).collect();
-    selected_units(s)
+    selected_units(s, false)
         .into_iter()
         .map(|(items, bounds)| {
             let members: Vec<&Arc<Element>> = items.iter().filter_map(|i| els.get(i)).collect();
@@ -562,6 +568,94 @@ fn moves_for(units: &[Unit], target: Rect, edge: Edge) -> Vec<(Item, Vec2)> {
         .collect()
 }
 
+/// Distribute to Layers (#517): each selected object at the playhead to a new layer of its own,
+/// directly above the layer it was on (in the same folder or under the same mask), stacked as
+/// the objects were. The new layer holds it for the frames its keyframe covered.
+fn distribute_to_layers(s: &mut Session, _: &Value) -> Result<Value> {
+    let frame = s.frame;
+    let mut made: Vec<(LayerId, ElementId)> = Vec::new();
+    let mut left_raw = 0;
+    for source in s.selected_layers() {
+        let Some(layer) = s.timeline().layer(source).cloned() else { continue };
+        if layer.kind != LayerKind::Normal {
+            return Err(EngineError::State(format!("'{}' is not an ordinary layer: Distribute to Layers moves artwork from ordinary layers only", layer.name)));
+        }
+        if layer.opacity < 1.0 {
+            // Its artwork fades as one group; spread over layers it would fade piece by piece.
+            return Err(EngineError::State(format!("'{}' is below full opacity: set it to 100 % first", layer.name)));
+        }
+        let Some(kf) = layer.keyframe_at(frame) else { continue };
+        let (start, duration) = (kf.start, kf.duration);
+        // The keyframes either side: a tween into this one ends on its artwork, and an instance
+        // that goes on from one to the next plays on from where it was.
+        let before = layer.keyframes.iter().find(|k| k.start + k.duration == start);
+        let after = layer.keyframes.iter().find(|k| k.start == start + duration);
+        if kf.tween.is_some() || kf.motion.is_some() || before.is_some_and(|k| k.tween.is_some() || k.motion.is_some()) {
+            return Err(EngineError::State(format!("'{}' is tweened at this frame: Distribute to Layers moves still artwork only", layer.name)));
+        }
+        // Bottom first, each new layer going in just above the last: the topmost object ends
+        // up on the topmost new layer.
+        let moving: Vec<Arc<Element>> = kf.elements.iter().filter(|e| s.selection.contains(source, e.id)).cloned().collect();
+        left_raw += moving.iter().filter(|e| crate::merge::mergeable(e).is_some()).count();
+        let moving: Vec<Arc<Element>> = moving.into_iter().filter(|e| crate::merge::mergeable(e).is_none()).collect();
+        if moving.is_empty() {
+            continue;
+        }
+        let goes_on = |id: ElementId| [before, after].into_iter().flatten().any(|k| k.elements.iter().any(|e| e.id == id));
+        if moving.iter().any(|e| matches!(e.kind, ElementKind::Symbol { .. }) && goes_on(e.id)) {
+            return Err(EngineError::State("a selected instance goes on from the keyframe before or after: on a layer of its own it would start playing again. Insert a blank keyframe around it first".into()));
+        }
+        if s.timeline().layers.len() + moving.len() > 1000 {
+            return Err(EngineError::State("too many layers (limit 1000)".into()));
+        }
+        let ids: Vec<ElementId> = moving.iter().map(|e| e.id).collect();
+        s.with_layer(source, |s| -> Result<()> {
+            let kf = s.editable_keyframe()?;
+            kf.elements.retain(|e| !ids.contains(&e.id));
+            Ok(())
+        })?;
+        let mut above = source;
+        for el in moving {
+            let named = match &el.kind {
+                ElementKind::Symbol { symbol, .. } => s.doc.symbol(*symbol).map(|x| x.name.clone()),
+                _ => None,
+            };
+            let count = s.timeline().layers.len();
+            let id = LayerId(s.doc.alloc_id());
+            // The source's settings (folder or mask it is in, camera depth and attachment, the
+            // layer it follows, sound volume), with its own name, colour and frames.
+            let mut new = layer.clone();
+            new.id = id;
+            new.name = named.unwrap_or_else(|| format!("Layer {}", count + 1));
+            new.color = crate::cmds_timeline::layer_color(count + 1);
+            new.video = None;
+            let mut keys = Vec::new();
+            if start > 0 {
+                keys.push(Arc::new(anicraft_doc::Keyframe::new(0, start)));
+            }
+            let mut k = anicraft_doc::Keyframe::new(start, duration);
+            k.elements.push(el.clone());
+            keys.push(Arc::new(k));
+            new.keyframes = keys;
+            let tl = crate::editing::edited_mut(&mut s.doc, s.scene, &s.editing)?;
+            let at = tl.layers.iter().position(|l| l.id == above).unwrap_or(0);
+            tl.layers.insert(at, Arc::new(new));
+            tl.repair_masks();
+            above = id;
+            made.push((id, el.id));
+        }
+    }
+    if made.is_empty() {
+        let why = if left_raw > 0 { "raw shapes stay on their layer: group them or make them drawing objects first" } else { "nothing is selected" };
+        return Err(EngineError::State(why.into()));
+    }
+    s.selection.clear();
+    for (l, e) in &made {
+        s.selection.extend_on(*l, [*e]);
+    }
+    Ok(json!({"layers": made.iter().map(|(l, _)| l.0).collect::<Vec<_>>(), "left_raw": left_raw}))
+}
+
 /// Moves each element by its own amount, on its own layer.
 fn translate_each(s: &mut Session, moves: &[(Item, Vec2)]) -> Result<usize> {
     let mut layers: Vec<LayerId> = Vec::new();
@@ -595,45 +689,61 @@ fn translate_each(s: &mut Session, moves: &[(Item, Vec2)]) -> Result<usize> {
 /// selected object on its own, and each raw drawing as one (#301). A raw drawing is the selected
 /// raw pieces on a layer that touch, such as a fill and the strokes on its edges (ADR 0042), so a
 /// shape keeps its outline where it goes.
-fn selected_units(s: &Session) -> Vec<Unit> {
+///
+/// With `outlines`, a unit's bounds are where its outlines' points are, without the width of
+/// its strokes (#569): what align and distribute line up. Otherwise they are what it covers.
+fn selected_units(s: &Session, outlines: bool) -> Vec<Unit> {
     let mut units: Vec<Unit> = Vec::new();
-    let mut raw: Vec<(LayerId, Vec<Item>, Vec<Rect>)> = Vec::new();
+    // Per layer: each raw piece, what it covers (which says which touch) and its own bounds.
+    type Piece = (Item, Rect, Rect);
+    let mut raw: Vec<(LayerId, Vec<Piece>)> = Vec::new();
     for (l, e) in s.selected_elements() {
         let b = s.element_bounds_on(l, e.id);
         if b.is_empty() {
             continue;
         }
+        let own = if outlines { s.element_outline_bounds_on(l, e.id) } else { b };
         if crate::merge::mergeable(&e).is_none() {
-            units.push((vec![(l, e.id)], b));
+            units.push((vec![(l, e.id)], own));
             continue;
         }
-        match raw.iter_mut().find(|(k, ..)| *k == l) {
-            Some((_, ids, boxes)) => {
-                ids.push((l, e.id));
-                boxes.push(b);
-            }
-            None => raw.push((l, vec![(l, e.id)], vec![b])),
+        match raw.iter_mut().find(|(k, _)| *k == l) {
+            Some((_, pieces)) => pieces.push(((l, e.id), b, own)),
+            None => raw.push((l, vec![((l, e.id), b, own)])),
         }
     }
-    for (_, ids, boxes) in raw {
+    for (_, pieces) in raw {
+        let boxes: Vec<Rect> = pieces.iter().map(|p| p.1).collect();
         for group in crate::merge::touching_groups(&boxes) {
-            let items: Vec<Item> = group.iter().filter_map(|&i| ids.get(i).copied()).collect();
-            let b = group.iter().filter_map(|&i| boxes.get(i)).fold(Rect::EMPTY, |r, b| r.union(b));
+            let items: Vec<Item> = group.iter().filter_map(|&i| pieces.get(i).map(|p| p.0)).collect();
+            let b = group.iter().filter_map(|&i| pieces.get(i)).fold(Rect::EMPTY, |r, p| r.union(&p.2));
             units.push((items, b));
         }
     }
     units
 }
 
+/// What To Stage aligns to: the stage, or inside an open symbol its own space, where the
+/// symbol's registration point stands for the stage (#568): centring there centres the
+/// artwork on that point, and Left and Top put its edge on it. A group or drawing object opened
+/// inside a symbol is still inside that symbol.
+fn stage_in_edit_space(s: &Session) -> Rect {
+    if s.editing.iter().any(|l| l.symbol().is_some()) {
+        Rect::new(0.0, 0.0, 0.0, 0.0)
+    } else {
+        Rect::new(0.0, 0.0, s.doc.stage.width as f32, s.doc.stage.height as f32)
+    }
+}
+
 fn align(s: &mut Session, p: &Value, edge: Edge) -> Result<Value> {
-    let units = selected_units(s);
+    let units = selected_units(s, true);
     if units.is_empty() {
         return Err(EngineError::State("nothing is selected".into()));
     }
     // One element (or one raw drawing) aligns to the stage: there is nothing else to align it with.
     let to_stage = opt_bool(p, "to_stage")?.unwrap_or(units.len() == 1);
     let target = if to_stage {
-        Rect::new(0.0, 0.0, s.doc.stage.width as f32, s.doc.stage.height as f32)
+        stage_in_edit_space(s)
     } else {
         units.iter().fold(Rect::EMPTY, |r, (_, b)| r.union(b))
     };
@@ -642,8 +752,71 @@ fn align(s: &mut Session, p: &Value, edge: Edge) -> Result<Value> {
     Ok(json!({"moved": n, "to_stage": to_stage}))
 }
 
+/// Match Size (#566): each selected object (a raw drawing as one, as align takes them) scaled
+/// about its top-left corner to the largest one's width and/or height, or the stage's.
+/// Objects with no extent along a matched side (a straight line along the other) keep it.
+fn match_size(s: &mut Session, p: &Value, width: bool, height: bool) -> Result<Value> {
+    let units = selected_units(s, true);
+    if units.is_empty() {
+        return Err(EngineError::State("nothing is selected".into()));
+    }
+    let to_stage = opt_bool(p, "to_stage")?.unwrap_or(false);
+    let (w, h) = if to_stage {
+        (s.doc.stage.width as f32, s.doc.stage.height as f32)
+    } else {
+        units.iter().fold((0.0f32, 0.0f32), |(w, h), (_, b)| (w.max(b.width()), h.max(b.height())))
+    };
+    const MIN: f32 = 1e-3;
+    let mut by: std::collections::HashMap<Item, Affine> = std::collections::HashMap::new();
+    for (items, b) in units {
+        let sx = if width && b.width() > MIN { w / b.width() } else { 1.0 };
+        let sy = if height && b.height() > MIN { h / b.height() } else { 1.0 };
+        let m = Affine::translate(b.min.x, b.min.y).mul(&Affine::scale(sx, sy)).mul(&Affine::translate(-b.min.x, -b.min.y));
+        by.extend(items.into_iter().map(|i| (i, m)));
+    }
+    s.each_layer(true, |s| {
+        let layer = s.layer;
+        Ok(json!({"transformed": apply_each(s, |id| by.get(&(layer, id)).copied().unwrap_or(Affine::IDENTITY))?}))
+    })
+}
+
+/// Space Evenly (#566): the objects between the first and the last (by their left or top
+/// edges) move so every gap between neighbours is the same; the outer two stay put.
+fn space(s: &mut Session, horizontal: bool) -> Result<Value> {
+    let mut units = selected_units(s, true);
+    if units.len() < 3 {
+        return Err(EngineError::State("select at least three elements to space evenly".into()));
+    }
+    // Where an object starts along the axis, and how long it is.
+    let lo = |b: &Rect| if horizontal { (b.min.x, b.width()) } else { (b.min.y, b.height()) };
+    units.sort_by(|a, b| lo(&a.1).0.total_cmp(&lo(&b.1).0));
+    let (Some(first), Some(last)) = (units.first(), units.last()) else { return Ok(json!({"moved": 0})) };
+    let (start, _) = lo(&first.1);
+    let (last_at, last_len) = lo(&last.1);
+    // In f64, so rounding doesn't add up over many objects and move the last one.
+    let end = f64::from(last_at) + f64::from(last_len);
+    let total: f64 = units.iter().map(|u| f64::from(lo(&u.1).1)).sum();
+    let gap = (end - f64::from(start) - total) / (units.len() - 1) as f64;
+    // A gap so negative that an object would pass the next one (one long object over short
+    // ones) has no even spacing that keeps their order: refuse rather than shuffle them.
+    if units.iter().take(units.len() - 1).any(|u| f64::from(lo(&u.1).1) + gap < 0.0) {
+        return Err(EngineError::State("these objects overlap too much to space evenly in their order".into()));
+    }
+    let mut at = f64::from(start);
+    let mut moves: Vec<(Item, Vec2)> = Vec::new();
+    for (items, b) in &units {
+        let (l, n) = lo(b);
+        let d = (at - f64::from(l)) as f32;
+        let d = if horizontal { Vec2::new(d, 0.0) } else { Vec2::new(0.0, d) };
+        moves.extend(items.iter().map(|id| (*id, d)));
+        at += f64::from(n) + gap;
+    }
+    let n = translate_each(s, &moves)?;
+    Ok(json!({"moved": n}))
+}
+
 fn distribute(s: &mut Session, horizontal: bool) -> Result<Value> {
-    let mut units = selected_units(s);
+    let mut units = selected_units(s, true);
     if units.len() < 3 {
         return Err(EngineError::State("select at least three elements to distribute".into()));
     }

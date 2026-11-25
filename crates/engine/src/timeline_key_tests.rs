@@ -70,6 +70,25 @@ fn f5_past_every_layer_lengthens_the_active_one() {
 }
 
 #[test]
+fn f5_does_not_add_frames_to_the_active_folder() {
+    let mut s = Session::default();
+    let artwork = s.layer;
+    let folder = LayerId(run(&mut s, "layer.new_folder", json!({}))["layer"].as_u64().unwrap());
+    let params = json!({"all_layers": true, "advance": true});
+
+    let v = run(&mut s, "timeline.insert_frame", params.clone());
+    assert_eq!(v["layers"], json!([artwork.0]));
+    assert_eq!(spans(&s, artwork), [(0, 2)]);
+    assert!(spans(&s, folder).is_empty());
+
+    s.set_frame(9);
+    let err = s.execute("timeline.insert_frame", &params).unwrap_err();
+    assert!(matches!(err, EngineError::State(message) if message == "a folder holds layers, not frames; pick a layer inside it"));
+    assert!(spans(&s, folder).is_empty());
+    assert_eq!(spans(&s, artwork), [(0, 2)]);
+}
+
+#[test]
 fn f5_advance_moves_the_playhead_onto_the_new_frame() {
     let mut s = Session::default();
     let a = layer_with(&mut s, &[(0, 1)]);
@@ -172,4 +191,22 @@ fn advance_at_the_last_frame_stays_in_range() {
     s.layer_mut(Some(a)).unwrap().keyframes = vec![Arc::new(Keyframe::new(MAX_FRAME, 1))];
     let _ = s.execute("timeline.insert_keyframe", &json!({"advance": true}));
     assert!(s.frame <= MAX_FRAME);
+}
+
+/// #561: Next and Previous Frame (`.` and `,`) stop at the last and the first frame instead of
+/// going round to the other end.
+#[test]
+fn stepping_stops_at_the_ends() {
+    let mut s = Session::default();
+    let l = s.layer;
+    run(&mut s, "timeline.insert_frame", json!({"layer": l.0, "frame": 0, "count": 4}));
+    let last = s.frame_count() - 1;
+    run(&mut s, "timeline.goto", json!({"frame": last}));
+    run(&mut s, "timeline.next_frame", json!({}));
+    assert_eq!(s.frame, last, "the last frame stays");
+    run(&mut s, "timeline.goto", json!({"frame": 0}));
+    run(&mut s, "timeline.prev_frame", json!({}));
+    assert_eq!(s.frame, 0, "the first frame stays");
+    run(&mut s, "timeline.next_frame", json!({}));
+    assert_eq!(s.frame, 1, "in between, one frame on");
 }

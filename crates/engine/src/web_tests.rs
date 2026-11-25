@@ -117,3 +117,22 @@ fn a_bare_xfl_files_package_is_a_folder_that_resolves() {
         assert_eq!(crate::import_package(Path::new("walk.fla")), Path::new("walk.fla"), "a file that isn't an XFL proxy is its own package");
     });
 }
+
+/// A picked `.fla` is read up to the size limit (the zip importer's and the legacy
+/// container's, which agree) and routed by its first bytes: the legacy compound binary to
+/// its own importer, anything else to the zip one, an empty file included.
+#[test]
+fn a_picked_fla_is_read_within_the_limit_and_routed_by_its_bytes() {
+    assert_eq!(anicraft_xfl::MAX_FLA_BYTES, anicraft_fla::cfb::MAX_FILE);
+    in_browser(|| {
+        let mut s = Session::new(crate::doc::sample::demo());
+        let mut legacy = anicraft_fla::MAGIC.to_vec();
+        legacy.resize(512, 0);
+        for (name, bytes, legacy) in [("old.fla", legacy, true), ("new.fla", b"PK\x03\x04 not a zip".to_vec(), false), ("empty.fla", Vec::new(), false)] {
+            vfs::put(Path::new(name), bytes).unwrap();
+            let err = s.execute("file.open", &json!({"path": name, "confirm": true})).unwrap_err().to_string();
+            assert!(!err.contains("too large"), "{name}: {err}");
+            assert_eq!(err.contains("legacy Flash"), legacy, "{name}: {err}");
+        }
+    });
+}

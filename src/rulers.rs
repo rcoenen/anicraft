@@ -90,7 +90,7 @@ fn whole(at: f32) -> f32 {
 pub fn input(app: &mut App, ui: &mut egui::Ui, bars: &Bars, geo: Geo, paused: bool) {
     for (rect, axis, name, id) in [(bars.top, GuideAxis::Horizontal, tr!("Horizontal ruler"), "ruler_top"), (bars.left, GuideAxis::Vertical, tr!("Vertical ruler"), "ruler_left")] {
         let Some(rect) = rect else { continue };
-        let resp = ui.interact(rect, ui.id().with(id), Sense::drag()).named(name);
+        let resp = ui.interact(rect, ui.scope_id().with(id), Sense::drag()).named(name);
         let resp = resp.on_hover_text(tr!("Drag onto the stage to add a guide (View › Guides › Edit Guides adds one by position)"));
         if resp.hovered() || resp.dragged() {
             ui.ctx().set_cursor_icon(if axis == GuideAxis::Horizontal { CursorIcon::ResizeRow } else { CursorIcon::ResizeColumn });

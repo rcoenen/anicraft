@@ -9,7 +9,7 @@ use crate::app::App;
 use crate::theme::{T, TARGET, Type, color, font, text};
 use anicraft_engine::StateId;
 use anicraft_engine::find::{self, Field, Hit, Kind, Query, TextOptions, Where};
-use egui::{Align2, Rect, Sense, WidgetType, pos2, vec2};
+use egui::{Align2, Rect, Sense, Role, pos2, vec2};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -243,7 +243,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     }
     let mut open = app.find.open;
     let at = ctx.content_rect().right_top() + vec2(-720.0, 110.0);
-    let shown = crate::windows::new(ctx, tr!("Find and Replace")).id(egui::Id::new("find_replace")).open(&mut open).default_pos(at).default_width(400.0).resizable(true).collapsible(false).show(ctx, |ui| panel(app, ui));
+    let shown = crate::windows::new(ctx, tr!("Find and Replace")).id(egui::Id::unique("find_replace")).open(&mut open).default_pos(at).default_width(400.0).resizable(true).collapsible(false).show(ctx, |ui| panel(app, ui));
     a11y::name_title_bar(&shown, tr!("Find and Replace"));
     app.find.open = open;
 }
@@ -494,7 +494,7 @@ fn results_list(app: &mut App, ui: &mut egui::Ui, list: &[Hit]) {
             let label = format!("{field} · {place}");
             p.with_clip_rect(right.intersect(ui.clip_rect())).text(pos2(right.left(), r.center().y), Align2::LEFT_CENTER, &label, font(Type::Caption), color(Type::Caption));
             let name = tr!("{what}, {field}, {place}", what = what, field = field, place = place);
-            a11y::control(ui, &resp, WidgetType::SelectableLabel, &name, Some(on));
+            a11y::control(ui, &resp, Role::Button, &name, Some(on));
             if resp.on_hover_text(&name).clicked() {
                 clicked = Some(i);
             }

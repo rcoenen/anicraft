@@ -72,6 +72,8 @@ pub struct Cache {
     /// `(ready, needed)` visible tiles this frame.
     pub ready: (usize, usize),
     pub canvas: Rect,
+    /// Device pixels per point when `canvas` was measured.
+    canvas_pixels_per_point: f32,
     /// The stage has been laid out once, so `canvas` is where it really was last frame.
     laid_out: bool,
     pub service: Option<RenderService>,
@@ -92,7 +94,7 @@ pub struct Cache {
 
 impl Default for Cache {
     fn default() -> Self {
-        Cache { tiles: Vec::new(), tick: 0, ms: 0.0, ready: (0, 0), canvas: Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0)), laid_out: false, service: None, shown_state: None, shown_frame: None, last_scale: None, gpu: Default::default(), drawn_by: None, pattern: None }
+        Cache { tiles: Vec::new(), tick: 0, ms: 0.0, ready: (0, 0), canvas: Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0)), canvas_pixels_per_point: 1.0, laid_out: false, service: None, shown_state: None, shown_frame: None, last_scale: None, gpu: Default::default(), drawn_by: None, pattern: None }
     }
 }
 
@@ -272,6 +274,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     crate::shape_envelope::settle(app);
     crate::camera_tool::tick(app, ui.ctx(), now);
     note_left_out(app);
+    let ppp = ui.ctx().pixels_per_point();
+    let ppp_was = std::mem::replace(&mut app.stage_cache.canvas_pixels_per_point, ppp);
     let canvas_was = std::mem::replace(&mut app.stage_cache.canvas, canvas);
     let laid_out = std::mem::replace(&mut app.stage_cache.laid_out, true);
     // While a colour picker popup is open the stage is its eyedropper (ADR 0109): a click
@@ -280,7 +284,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let resp = ui.allocate_rect(canvas, if picker.is_some() { Sense::hover() } else { Sense::click_and_drag() });
     // The drawing surface: Ctrl+F6 lands here, and screen readers hear the tool in hand.
     crate::a11y::anchor(ui, crate::a11y::Region::Stage, canvas, &resp);
-    let ppp = ui.ctx().pixels_per_point();
+    let show_edges = !app.s.aids.hide_edges;
     let size = vec2(app.s.doc.stage.width as f32, app.s.doc.stage.height as f32);
     // Still as fitted (nobody zoomed or panned since) but the canvas changed size: fit again, as
     // Fit in Window stays fitted when the window or the interface scale changes.
@@ -294,12 +298,15 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     // Otherwise the artist chose this view, and a panel that grows or shrinks (the Timeline's
     // top edge, a dock, the rulers, the window) only covers or reveals the stage: the artwork
     // stays where it is on screen (#423). The pan is measured from the canvas centre, so it
-    // takes up the centre's move.
-    if laid_out && !app.view.fit && canvas_was != canvas && canvas_was.width() > 10.0 && canvas_was.height() > 10.0 {
-        app.view.pan += canvas_was.center() - canvas.center();
+    // takes up the centre's move, with both centres in this frame's points.
+    if laid_out && !app.view.fit && (canvas_was != canvas || ppp_was != ppp) && canvas_was.width() > 10.0 && canvas_was.height() > 10.0 {
+        app.view.pan += canvas_was.center().to_vec2() * (ppp_was / ppp) - canvas.center().to_vec2();
     }
     if app.view.fit && canvas.width() > 10.0 && canvas.height() > 10.0 {
-        app.view.zoom = ((canvas.width() - 64.0) / size.x).min((canvas.height() - 64.0) / size.y).clamp(0.05, 64.0);
+        let width = (canvas.width() - 64.0).max(1.0);
+        let height = (canvas.height() - 64.0).max(1.0);
+        // Fitting may need to go below the minimum manual zoom to show the whole stage.
+        app.view.zoom = (width / size.x).min(height / size.y).min(64.0 / ppp);
         app.view.pan = egui::Vec2::ZERO;
         app.view.fit = false;
         app.view.fitted = Some((vec2(canvas.width(), canvas.height()), app.view.zoom));
@@ -310,8 +317,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         let (zoom_delta, scroll) = ui.input(|i| (i.zoom_delta(), i.smooth_scroll_delta));
         if let Some(p) = resp.hover_pos() {
             if (zoom_delta - 1.0).abs() > 1e-4 {
-                let z = app.view.zoom * zoom_delta;
-                app.zoom_about(canvas, p, z);
+                app.zoom_by(canvas, p, zoom_delta, ppp);
             } else if app.tool == Tool::Camera && scroll.y != 0.0 {
                 // With the Camera tool the wheel zooms the camera, not the view.
                 crate::camera_tool::wheel(app, scroll.y, now);
@@ -331,18 +337,16 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         });
         let c = canvas.center();
         if zin {
-            let z = app.view.zoom * 1.5;
-            app.zoom_about(canvas, c, z);
+            app.zoom_by(canvas, c, 1.5, ppp);
         }
         if zout {
-            let z = app.view.zoom / 1.5;
-            app.zoom_about(canvas, c, z);
+            app.zoom_by(canvas, c, 1.0 / 1.5, ppp);
         }
         if fit {
             app.view.fit = true;
         }
         if one {
-            app.zoom_about(canvas, c, 1.0);
+            app.zoom_about(canvas, c, 1.0 / ppp, ppp);
         }
     }
 
@@ -492,7 +496,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             && let Some(p) = pointer
         {
             let centre = sel_rect.map_or(canvas.center(), |r| r.center());
-            rotate_cursor(&ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("stage_cursor"))), p, p - centre);
+            rotate_cursor(&ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("stage_cursor"))), p, p - centre);
         }
     }
     if let Some(picker) = picker {
@@ -807,7 +811,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             Drag::MultiMarquee { start, cur } => crate::onion::marquee(app, start, cur, shift),
             Drag::Marquee { start, cur } => {
                 // The parts of raw fills and strokes under it, cut at its edges, and the objects
-                // wholly inside it (ADR 0041).
+                // it touches (ADR 0041, #522).
                 app.run("raw.select_rect", json!({"x0": start.x, "y0": start.y, "x1": cur.x, "y1": cur.y, "add": shift}));
             }
             Drag::Shape { start, cur } => create_shape(app, start, cur),
@@ -888,8 +892,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     app.run("element.pick", json!({"x": sp.x, "y": sp.y, "add": shift}));
                 }
                 Tool::Zoom => {
-                    let z = if alt { app.view.zoom / 2.0 } else { app.view.zoom * 2.0 };
-                    app.zoom_about(canvas, p, z);
+                    app.zoom_by(canvas, p, if alt { 0.5 } else { 2.0 }, ppp);
                 }
                 _ => {}
             }
@@ -989,7 +992,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 }
             });
             ui.menu_button(tr!("Align"), |ui| {
-                for id in ["align.left", "align.hcenter", "align.right", "align.top", "align.vcenter", "align.bottom", "align.distribute_h", "align.distribute_v"] {
+                for id in ["align.left", "align.hcenter", "align.right", "align.top", "align.vcenter", "align.bottom", "align.distribute_h", "align.distribute_v", "align.space_h", "align.space_v", "align.match_width", "align.match_height", "align.match_size"] {
                     crate::menus::cmd_item(app, ui, id);
                 }
             });
@@ -1197,7 +1200,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 
         // While a background render catches up with a drag, outline where the selection is now,
         // so the artwork never seems to lag the pointer.
-        if ready < keys.len() && !preview && matches!(app.drag, Drag::Move { .. } | Drag::SnapMove { .. } | Drag::Transform { .. } | Drag::Bend { .. } | Drag::RawPoint { .. } | Drag::RawHandle { .. }) {
+        if show_edges && ready < keys.len() && !preview && matches!(app.drag, Drag::Move { .. } | Drag::SnapMove { .. } | Drag::Transform { .. } | Drag::Bend { .. } | Drag::RawPoint { .. } | Drag::RawHandle { .. }) {
             let to_px = Affine::translate(origin.x, origin.y).mul(&Affine::scale(zoom, zoom));
             let dl = app.s.display_list();
             let stroke = Stroke::new(1.5, T.selection);
@@ -1225,7 +1228,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     if preview {
         // The movie's picture: stage-space overlays don't belong on it.
         painter.text(stage_rect.left_top() + vec2(0.0, -6.0), egui::Align2::LEFT_BOTTOM, tr!("Camera view"), crate::theme::font(crate::theme::Type::Caption), T.text_dim);
-        let badge = format!("{:.0}%", st_zoom * 100.0);
+        let badge = format!("{:.0}%", st_zoom * ppp * 100.0);
         painter.text(canvas.right_bottom() + vec2(-10.0, -8.0), egui::Align2::RIGHT_BOTTOM, badge, crate::theme::font(crate::theme::Type::Data), T.text_dim);
         crate::a11y::surface(ui, &resp, &tr!("Stage · previewing through the camera · {tool} tool · frame {frame}", tool = crate::i18n::t(app.tool.label()), frame = app.s.frame + 1));
         return;
@@ -1252,7 +1255,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     crate::warp_tool::draw(app, &painter, xf);
     let sel_stroke = Stroke::new(1.0, T.selection);
     let raw = raw_ids(app);
-    if app.tool == Tool::Select && app.drag == Drag::None
+    if show_edges && app.tool == Tool::Select && app.drag == Drag::None
         && !multi
         && !preview
         && app.palette.is_none()
@@ -1271,7 +1274,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let enveloped = crate::shape_envelope::shown(app).is_some();
     // Selected raw fills and strokes (ADRs 0031, 0041) show an
     // Animate-style stipple overlay instead of a bounding box.
-    if app.tool == Tool::Select && !preview {
+    if show_edges && app.tool == Tool::Select && !preview {
         let gap = dot_gap_points(ppp);
         let to_px = Affine::translate(origin.x, origin.y)
             .mul(&Affine::scale(zoom, zoom));
@@ -1372,7 +1375,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         crate::onion::stage_badge(app, &painter, canvas);
     }
     // Every selected element, on whichever layer it is (ADR 0044).
-    for (layer, e) in app.s.selected_elements() {
+    let marked = if show_edges { app.s.selected_elements() } else { Vec::new() };
+    for (layer, e) in marked {
         let id = e.id;
         let b = app.s.element_bounds_on(layer, id);
         if b.is_empty() {
@@ -1542,7 +1546,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     }
 
     // zoom badge
-    let badge = format!("{:.0}%", st_zoom * 100.0);
+    let badge = format!("{:.0}%", st_zoom * ppp * 100.0);
     painter.text(canvas.right_bottom() + vec2(-10.0, -8.0), egui::Align2::RIGHT_BOTTOM, badge, crate::theme::font(crate::theme::Type::Data), T.text_dim);
     // Last, so the focus ring is drawn over the artwork.
     let selected = app.s.selection.len();
@@ -4759,7 +4763,7 @@ pub fn commit_text(app: &mut App) {
 /// its own colour, size and style (ADR 0085). Esc or a click elsewhere finishes (a click in
 /// Properties' text styles keeps it open); Enter starts a new line.
 fn text_editor(app: &mut App, ui: &mut egui::Ui, stage_origin: Pos2, zoom: f32) {
-    let focused_id = egui::Id::new("stage_text_edit_field");
+    let focused_id = egui::Id::unique("stage_text_edit_field");
     let had_focus = ui.ctx().memory(|m| m.has_focus(focused_id));
     crate::rich_edit::watch_clipboard(app, ui.ctx(), had_focus);
     let paper = crate::theme::stage_text_colour(anicraft_engine::doc::Rgba { a: 1.0, ..app.s.doc.stage.background });
@@ -4775,7 +4779,7 @@ fn text_editor(app: &mut App, ui: &mut egui::Ui, stage_origin: Pos2, zoom: f32) 
     let width = 260.0f32.max(size * 8.0).max(block_w.unwrap_or(0.0) * zoom + 8.0).min(4000.0);
     let mut done = false;
     let (runs, last) = (te.runs.clone(), te.last.clone());
-    egui::Area::new(egui::Id::new("stage_text_edit")).fixed_pos(at).order(egui::Order::Foreground).show(ui.ctx(), |ui| {
+    egui::Area::new(egui::Id::unique("stage_text_edit")).fixed_pos(at).order(egui::Order::Foreground).show(ui.ctx(), |ui| {
         egui::Frame::new().fill(paper).stroke(Stroke::new(1.0, T.selection)).inner_margin(4.0).show(ui, |ui| {
             let mut layouter = |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
                 let job = crate::rich_edit::layout_job(&runs, &last, buf.as_str(), zoom, wrap);
@@ -5570,5 +5574,31 @@ mod pointer_tests {
         }
         // Two separate clicks stay two clicks: the fill alone.
         assert_eq!(double_click(0.7).s.selection.len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod hide_edges_tests {
+    use super::*;
+
+    #[test]
+    fn hide_edges_removes_a_selection_box_and_keeps_transform_handles() {
+        let ctx = egui::Context::default();
+        let session = anicraft_engine::Session::default();
+        let mut app = App::with_context(&ctx, session, Some(std::path::PathBuf::from("unused.png")));
+        app.s.execute("draw.rect", &serde_json::json!({"x": 160, "y": 80, "w": 100, "h": 60})).unwrap();
+        app.tool = Tool::Rect;
+        let marks = |app: &mut App| {
+            let input = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1600.0, 940.0))), ..Default::default() };
+            let mut frame = ctx.run_ui(input, |ui| show(app, ui));
+            frame.textures_delta.clear();
+            frame.shapes.iter().filter(|s| matches!(&s.shape, egui::Shape::Rect(r) if r.stroke.color == T.selection)).count()
+        };
+        assert!(marks(&mut app) > 0, "a drawing tool shows the selection box before Hide Edges");
+        assert!(app.run("view.hide_edges", serde_json::json!({})).is_some());
+        assert_eq!(marks(&mut app), 0, "the box is hidden");
+        assert!(!app.s.selection.is_empty(), "the drawing is still selected");
+        app.tool = Tool::Transform;
+        assert!(marks(&mut app) > 0, "Free Transform still shows its handles");
     }
 }

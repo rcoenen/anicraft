@@ -236,6 +236,19 @@ impl Session {
         r
     }
 
+    /// Stage-space bounds of the outlines of element `id` on `layer` at the playhead: where
+    /// their points are, without the width of their strokes. What align and distribute line up
+    /// (#569), so a thicker or thinner stroke leaves aligned artwork where it is.
+    pub fn element_outline_bounds_on(&self, layer: LayerId, id: ElementId) -> Rect {
+        let mut r = Rect::EMPTY;
+        for item in self.display_list().items.iter().filter(|i| i.element == id && i.layer == layer) {
+            // The points carried into stage space, then boxed: a turned or skewed outline's box
+            // is no bigger than the outline.
+            r = r.union(&item.path.transformed(&item.transform).bounds());
+        }
+        r
+    }
+
     /// Bounds of the whole selection, over every layer (the Free Transform box).
     pub fn selection_bounds(&self) -> Rect {
         let sel: HashSet<(LayerId, ElementId)> = self.selection.iter().collect();

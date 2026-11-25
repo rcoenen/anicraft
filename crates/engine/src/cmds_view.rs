@@ -15,6 +15,7 @@ pub fn specs() -> Vec<CommandSpec> {
     let c = |id, label, menu, shortcut, params, mutates, run| CommandSpec { id, label, menu, shortcut, params, mutates, run };
     vec![
         c("view.rulers", "Rulers", "View", Some("Ctrl+Alt+Shift+R"), "{on?: bool} (default: toggle) rulers along the stage's top and left edges, in stage pixels from its top-left corner; drag from one to make a guide", false, (|s, p| toggle(s, p, |a| &mut a.rulers)) as crate::RunFn),
+        c("view.hide_edges", "Hide Edges", "View", Some("Ctrl+Shift+E"), "{on?: bool} (default: toggle) the stage selection marks: artwork, selection and active tool handles are kept", false, |s, p| toggle(s, p, |a| &mut a.hide_edges)),
         c("view.grid_show", "Show Grid", "View/Grid", Some("Ctrl+'"), "{on?: bool} (default: toggle) the grid on the stage (never in pictures or exports)", false, |s, p| toggle(s, p, |a| &mut a.show_grid)),
         c("view.grid_snap", "Snap to Grid", "View/Grid", Some("Ctrl+Shift+'"), "{on?: bool} (default: toggle) points being drawn, dragged or moved snap to the grid's lines (shown or not)", false, |s, p| toggle(s, p, |a| &mut a.snap_grid)),
         c(
@@ -43,7 +44,7 @@ pub fn specs() -> Vec<CommandSpec> {
         c("view.guide_delete", "Delete Guide", "", None, "{index} removes this scene's guide `index`; refused while guides are locked", true, guide_delete),
         c("view.guides_clear", "Clear Guides", "View/Guides", None, "{} removes every guide from this scene (undoable)", true, guides_clear),
         c("view.snap_pixels", "Snap to Pixels", "View/Snapping", None, "{on?: bool} (default: toggle) points being drawn, dragged or moved go to whole stage pixels where nothing else snaps them", false, |s, p| toggle(s, p, |a| &mut a.snap_pixels)),
-        c("view.aids", "Rulers, Grid and Guides", "", None, "{} whether the rulers, grid and guides show and snap, the grid's and guides' settings, and this scene's guides [{axis, at}, ..]", false, |s, _| Ok(aids_json(s))),
+        c("view.aids", "Rulers, Grid and Guides", "", None, "{} whether the rulers, grid and guides show and snap, whether selection edges are hidden, the grid's and guides' settings, and this scene's guides [{axis, at}, ..]", false, |s, _| Ok(aids_json(s))),
     ]
 }
 
@@ -59,6 +60,7 @@ pub(crate) fn aids_json(s: &Session) -> Value {
     let g = s.doc.aids.grid;
     json!({
         "rulers": a.rulers,
+        "hide_edges": a.hide_edges,
         "grid": {"show": a.show_grid, "snap": a.snap_grid, "accuracy": a.grid_accuracy.key(), "spacing_x": g.spacing_x, "spacing_y": g.spacing_y, "color": color_hex(g.color), "over_objects": g.over_objects},
         "guides": {"show": a.show_guides, "lock": a.lock_guides, "snap": a.snap_guides, "accuracy": a.guide_accuracy.key(), "color": color_hex(s.doc.aids.guide_color), "list": guides_json(s)},
         "snap_pixels": a.snap_pixels,

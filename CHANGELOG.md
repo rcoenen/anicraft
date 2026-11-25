@@ -2,6 +2,123 @@
 
 ## Unreleased
 
+* **Flash 8 to CS4 `.fla` files open** (backlog P-039, ADR 0120, #163; by rcoenen, #478 and
+  #481): the binary `.fla` of the Flash 8 to CS4 era, which AniCraft used to refuse, now opens
+  like an Animate file, untitled, so Save asks for a new `.anicraft` name.
+  * **What comes across**: scenes, layers and folders, keyframes with their timing, shapes with
+    curves, gradients and strokes (dashed and dotted ones with their pattern), groups, symbol
+    instances (matrix, loop, first frame, colour effect), classic and shape tweens with their
+    eases and shape hints, static and dynamic text, bitmaps, sounds on frames, button names,
+    frame scripts (kept, never run), library folders and the stage size and frame rate.
+  * **Checked against the same documents saved by Animate**: on nine published sample rigs and
+    templates every timeline, layer, keyframe and instance matches (337 timelines, 1,628
+    layers, 6,993 keyframes, 4,457 instances), and against a Flash 8 file a community member
+    made, which reads to its end with one thing left out and named.
+  * **Not yet**, and named in the import report: filters, movie clip component settings, bitmap
+    fills and sound in and out points; ragged, stipple and hatched strokes are drawn solid, as
+    from Animate documents. Files from Flash MX 2004 and earlier are refused with the reason.
+  * **A damaged or hostile file can't crash or stall the import**: it is refused with a
+    one-sentence reason, or opens with what was left out counted. One import reads at most
+    twice the file's size in streams, decoding a stream costs at most 64 times its length,
+    and keyframes, text and bitmap pixels count against allowances for the whole document.
+  * `anicraft-cli fla-dump <file> [--stream name]` lists a legacy file's streams and records.
+  * Animate's own lossless bitmaps and uncompressed sounds (`bin/*.dat`) now decode in modern
+    `.fla` and XFL files too, instead of being reported as unreadable.
+* **Small fixes from outside, second batch** (M8, backlog P-012 and P-016). Fifteen pull
+  requests by Mex (MMexicann), merged with their commits.
+  * **The command line says when an option is wrong.** `anicraft-cli render --frmae 12` wrote
+    frame 1 without a word; now every subcommand refuses an option it doesn't read, with its
+    usage and exit code 2, before anything is opened (outside PR #552, widened from `render` to
+    all of them). `export --out` wins over a `path` or `dir` inside `--options` (#542). `serve`
+    stops at a `quit` line that starts with a byte-order mark (#544). On the app's own command
+    line, the last `--theme` wins whether it names a built-in theme or a file (#556), and
+    `--open` and `--renderer` say they need a value instead of swallowing the next option (#554).
+  * **Cut Frames that fails leaves the clipboard alone** (#545): the frames copied before are
+    still there to paste.
+  * **F5 with a folder selected past the end of the timeline** says a folder holds no frames,
+    instead of giving the folder a keyframe (#548).
+  * **Deleting a scene before the one you are in keeps your place** (#541): the frame, the
+    layer, the selection and the symbol you are editing stay as they were.
+  * **A swatch dropped outside the grid stays where it was** (#553), and the drop mark shows
+    only where a drop would land.
+  * **An update waits for unsaved work in every tab**, not only the one in front (#540).
+  * **`.wave` and `.oga` files show in the import pickers** (#550); AniCraft already read them.
+  * **On macOS, a backslash in a file name is part of the name** in Recent Files and its
+    thumbnails, not a folder separator (#543).
+  * Docs: the README and the guide list the packages a release has (no 32-bit Windows build;
+    Arch Linux, RISC-V deb and rpm, FreeBSD ARM64) (#549); where a portable copy keeps its
+    settings (#551); `formats` and `export` in the headless chapter (#539).
+* **Nineteen outside pull requests: parity and editing fixes** (M8, ADR 0134). Their commits
+  are merged here; what was added on top is said with each.
+  * **Closing the window no longer crashes on macOS** (#594, rcoenen): see the entry below.
+    Added: the rest of this batch ported to egui 0.37, and the pseudo-locale sweep knows the
+    names egui's colour mixer gives its own parts.
+  * **An imported Animate file keeps its name** (#596, rcoenen): see the entry below. Added:
+    the path it resolves goes through `engine::vfs`, so an agent's roots apply.
+  * **100 % zoom is one stage pixel on one screen pixel** (#590, ViktorBystrov72; #565),
+    whatever the display's scale or the interface scale; Fit in Window may go below 5 %.
+  * **View › Hide Edges** (Ctrl+Shift+E; #588, ViktorBystrov72; #298) hides the selection's
+    marks and keeps the selection. Added: every toggling menu item, not only this one, is a
+    check item with its state to a screen reader.
+  * **`file.import {match_stage: true}`** sets the stage to an imported SVG's size (#587,
+    ViktorBystrov72; #155).
+  * **Timeline** (AyberkA0): a button beside Layers shows only the active layer's row (#584,
+    #529); Next and Previous Frame stop at the ends instead of going round (#583), a press
+    selects at once and the playhead follows a drag (#582; both #561); a click on an empty
+    cell past a layer's frames selects it again (#573, #567).
+  * **Selecting and aligning** (AyberkA0): the marquee takes the instances, groups and objects
+    it touches (#580, #522); Match Width, Match Height, Match Width and Height, and Space
+    Evenly in the Align panel and Modify › Align (#578, #566); align and distribute line up
+    outlines, not stroke edges (#574, #569); To Stage inside a symbol aligns to its
+    registration point (#575, #568). Added: Match Size and Space Evenly measure outlines as
+    align does, a group opened inside a symbol counts as inside it, and the Align panel is
+    tall enough by default to show its new row.
+  * **Modify › Timeline › Distribute to Layers** (Ctrl+Shift+D; #579, AyberkA0; #517).
+  * **Export Frame as PNG and Export PNG Sequence take `background: false`** for real
+    transparency, also in Publish Settings (#581, AyberkA0; #536). Added: joined with the
+    note of what a frame left out (ADR 0128).
+  * **Properties** (AyberkA0): each filter is a card that folds (#577, #533, #534); raw shapes
+    moved, sized or turned by the fields merge when deselected, as after a drag (#576, #571);
+    a swatch picked closes the colour picker (#572, #570).
+  * **Convert Lines to Fills at the top of a shape's properties** (#562, Neel Patel; #530).
+
+* **An imported Animate file keeps its name** (ADR 0009 note; outside PR #596 by rcoenen): a `.fla`, `.xfl` or XFL folder
+  opens with its own name on its tab and in the window title instead of "Untitled", marked as
+  imported (a dim "Imported" on the tab, "(imported)" in the title, where it came from in the
+  tooltip). Saving still never writes over it: Save asks for a new name, suggesting an
+  `.anicraft` of the same name beside the original, and from then on the tab shows that file.
+  Opening the same Animate file again shows its tab. Save dialogs now open in the suggested
+  file's folder.
+
+* **Closing the window no longer crashes on macOS** (outside PR #594 by rcoenen). Quitting, closing the window and the end of
+  a `--screenshot` run could stop with `NSRangeException` (`Cannot remove an observer
+  <_NSTouchBarFinderObservation …> for the key path "nextResponder"`) and exit code 134. The
+  accessibility layer put the window's view back to its own class on close, after macOS had
+  given it another class to watch it for the Touch Bar. eframe and egui go to 0.37, which
+  brings AccessKit 0.27.2 with the fix (AccessKit/accesskit#835). Single-line text fields are now
+  as tall as the buttons beside them, as egui 0.37 draws them.
+
+* **An Animate drawing no longer loses lines without a word** (M4, ADR 0133, #498, #347,
+  backlog P-006).
+  * A stroke in a style AniCraft doesn't know was dropped, and the report still said
+    "Imported everything in the file". It is now drawn as a solid line with its weight, colour,
+    caps and joints, and counted.
+  * One unreadable command in a shape's outline lost everything after it on that edge. An
+    outline is written as runs, each starting at its own point: the command now costs the
+    rest of its own run only, the runs after it are drawn, and the report counts the run that
+    was cut short.
+  * The report also counts fills whose outline has a gap (they are closed straight across,
+    which can fill in more than the fill covered), fills of a kind AniCraft doesn't know, and
+    lines and fills in a style their shape doesn't have.
+  * The corpus has a package for these (`unknowns`), with its report, a golden frame and
+    probes.
+  * #498 came without a file, so which of these its drawing runs into is not confirmed: the
+    report line it now gets, or the file, will say. The merge of raw shapes on opening and the
+    GPU stage were ruled out with generated sketches.
+  * #347 (a `.fla` refused on macOS with the system's "cannot open files in this format"):
+    v0.2.1 did not take documents the system hands over; `main` has since ADR 0062. Not
+    re-tested on a Mac here.
+  * Not yet: the same recovery in the shared reader (storytold/craft-libs#3282).
 * **Memory and frame time stay flat** (M8, P-004, ADR 0132;
   [#314](https://github.com/storytold/anicraft/issues/314),
   [#477](https://github.com/storytold/anicraft/issues/477)).
@@ -45,14 +162,6 @@
     under the tools opens its colour picker (#246), and the docks keep their size while the
     pointer moves over them at every interface scale (#159, not reproduced; the issue stays
     open for a retest).
-
-* **An imported Animate file keeps its name** (ADR 0009 note): a `.fla`, `.xfl` or XFL folder
-  opens with its own name on its tab and in the window title instead of "Untitled", marked as
-  imported (a dim "Imported" on the tab, "(imported)" in the title, where it came from in the
-  tooltip). Saving still never writes over it: Save asks for a new name, suggesting an
-  `.anicraft` of the same name beside the original, and from then on the tab shows that file.
-  Opening the same Animate file again shows its tab. Save dialogs now open in the suggested
-  file's folder.
 * **Text reads right: mixed directions, and letters from a fallback face** (M5, backlog P-008,
   ADR 0130). With outside pull requests #39 and #40 by SoldierPePe, whose commits are merged
   here and rebuilt on styled text.
@@ -337,6 +446,7 @@
   * AniCraft still holds no video codec: your own ffmpeg does the decoding (the one Export
     Video uses). Without ffmpeg, the window says how to install it.
   * Headless: `file.import_video`, `file.video_info`, `layer.set_video`.
+
 * **Themes of your own** (#340, ADR 0117, M8): a theme is a small JSON file that names colours
   for the interface's roles, kept in `themes` in the settings folder (`data/themes` in a
   portable copy).
@@ -406,6 +516,14 @@
   * Off by default and per tween. Tweens without it, and older files, play exactly as before.
   * Every export shows it. Headless, CLI and MCP: `timeline.set_keep_area`.
 
+* **Bitmaps and sounds kept in Animate's own data format** come across from `.fla` and XFL
+  files. Animate often keeps a library image or sound only as its own data file in `bin/`
+  (no PNG, JPEG or WAV beside it); these used to be reported as "stored in Animate's own
+  format" and left out. Lossless bitmaps now decode with their transparency, and raw 16-bit
+  sounds come across as WAV, with the frames that play them. Variants not yet seen in real
+  files (other pixel formats, uncompressed or JPEG-backed bitmaps, compressed or 8-bit sounds)
+  are still named in the report with why. The decoder (`anicraft-flamedia`) is shared with the
+  Flash 8–CS4 importer, whose media streams hold the same bytes.
 * **Layer parenting** (fixes #388, ADR 0113, M7): a layer can follow another layer, as in
   Animate, so a forearm moves with the upper arm while each keeps its own tweens.
   * **Parenting view** in the timeline: the tree button beside **Layers** (or View › Parenting

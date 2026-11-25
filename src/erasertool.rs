@@ -170,7 +170,7 @@ pub fn picker_dropper(app: &mut App, ui: &egui::Ui, resp: &egui::Response, picke
     // changes.
     let scale = (zoom * ctx.pixels_per_point()).clamp(0.01, 64.0);
     let key = (app.s.state, p.x.to_bits(), p.y.to_bits(), scale.to_bits());
-    let cache = egui::Id::new("anicraft.stage.picker_dropper");
+    let cache = egui::Id::unique("anicraft.stage.picker_dropper");
     type Sampled = ((anicraft_engine::StateId, u32, u32, u32), [u8; 3]);
     let known: Option<Sampled> = ctx.data(|d| d.get_temp(cache));
     let rgb = match known.filter(|(k, _)| *k == key) {

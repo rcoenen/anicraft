@@ -22,3 +22,13 @@ Thumbs.db
 
 # parallel milestone worktrees (AGENTS.md › Milestone tracks)
 /.worktrees/
+
+# Python bytecode from the Nightly packaging suites (packaging/nightly-tests.py).
+__pycache__/
+
+# Nightly packaging (packaging/nightly-common.sh): the shared workflow checks these out into the
+# workspace, and `nightly_init` refuses a dirty tree, so they must never be committed.
+/.nightly-tools
+/.nightly-input
+/craft-i18n
+/craft-fonts

@@ -299,6 +299,109 @@ fn align_and_distribute() {
     assert!((s.selection_bounds().max.x - s.doc.stage.width as f32).abs() < 1e-3);
 }
 
+/// #517: Distribute to Layers puts each selected object on a new layer of its own above its
+/// layer, named after its symbol, stacked as they were; raw shapes stay.
+#[test]
+fn distribute_to_layers_gives_each_object_its_own_layer() {
+    let mut s = Session::default();
+    let home = s.layer;
+    for (name, x) in [("Back", 10), ("Front", 200)] {
+        run(&mut s, "draw.rect", json!({"x": x, "y": 10, "w": 50, "h": 50, "stroke": null, "object": true}));
+        run(&mut s, "modify.convert_to_symbol", json!({"name": name}));
+        run(&mut s, "edit.deselect", json!({}));
+    }
+    run(&mut s, "draw.rect", json!({"x": 400, "y": 10, "w": 50, "h": 50, "stroke": null, "object": false}));
+    run(&mut s, "edit.select_all", json!({}));
+    let layers_before = s.timeline().layers.len();
+    let v = run(&mut s, "modify.distribute_to_layers", json!({}));
+    assert_eq!(v["left_raw"].as_u64(), Some(1), "{v}");
+    let tl = s.timeline();
+    assert_eq!(tl.layers.len(), layers_before + 2);
+    let names: Vec<&str> = tl.layers.iter().map(|l| l.name.as_str()).collect();
+    let at = |n: &str| names.iter().position(|x| *x == n).unwrap_or_else(|| panic!("a layer named {n}: {names:?}"));
+    let src = tl.layers.iter().position(|l| l.id == home).expect("the old layer");
+    assert!(at("Front") < at("Back") && at("Back") < src, "the front instance on the top layer, both above their old layer: {names:?}");
+    let left = tl.layer(home).and_then(|l| l.keyframe_at(0)).map(|k| k.elements.len());
+    assert_eq!(left, Some(1), "only the raw square stays");
+    run(&mut s, "edit.undo", json!({}));
+    assert_eq!(s.timeline().layers.len(), layers_before, "one undo step");
+
+    // A layer's camera depth goes with it; a faded layer and the end of a tween are refused.
+    run(&mut s, "layer.set_depth", json!({"layer": home.0, "depth": 40}));
+    run(&mut s, "edit.select_all", json!({}));
+    let v = run(&mut s, "modify.distribute_to_layers", json!({}));
+    let first = anicraft_doc::LayerId(v["layers"][0].as_u64().unwrap_or(0));
+    assert_eq!(s.timeline().layer(first).map(|l| l.depth), Some(40.0));
+    run(&mut s, "edit.undo", json!({}));
+    run(&mut s, "layer.set_opacity", json!({"layer": home.0, "opacity": 50}));
+    run(&mut s, "edit.select_all", json!({}));
+    let e = s.execute("modify.distribute_to_layers", &json!({})).expect_err("a faded layer");
+    assert!(e.to_string().contains("opacity"), "{e}");
+    run(&mut s, "layer.set_opacity", json!({"layer": home.0, "opacity": 100}));
+    run(&mut s, "timeline.insert_frame", json!({"layer": home.0, "frame": 0, "count": 9}));
+    run(&mut s, "timeline.insert_keyframe", json!({"layer": home.0, "frame": 10}));
+    run(&mut s, "timeline.create_tween", json!({"layer": home.0, "frame": 0}));
+    run(&mut s, "timeline.goto", json!({"frame": 10}));
+    run(&mut s, "edit.select_all", json!({}));
+    let e = s.execute("modify.distribute_to_layers", &json!({})).expect_err("the end of a tween");
+    assert!(e.to_string().contains("tweened"), "{e}");
+}
+
+/// #566: Match Size makes every selected object the largest one's size (or the stage's),
+/// each keeping its top-left corner; Space Evenly makes the gaps between neighbours equal,
+/// leaving the outer two where they are.
+#[test]
+fn match_size_and_space_evenly() {
+    let mut s = Session::default();
+    for (x, y, w, h) in [(10, 50, 20, 40), (200, 10, 60, 10), (90, 120, 30, 30)] {
+        run(&mut s, "draw.rect", json!({"x": x, "y": y, "w": w, "h": h, "stroke": null}));
+    }
+    run(&mut s, "edit.select_all", json!({}));
+    let boxes = |s: &Session| s.selection.ids().map(|id| s.element_bounds(id)).collect::<Vec<_>>();
+    let before = boxes(&s);
+    run(&mut s, "align.match_width", json!({}));
+    let after = boxes(&s);
+    let widest = before.iter().map(|b| b.width()).fold(0.0, f32::max);
+    for (a, b) in after.iter().zip(&before) {
+        assert!((a.width() - widest).abs() < 1e-3 && (a.height() - b.height()).abs() < 1e-3, "as wide as the widest, as tall as before: {a:?}");
+        assert!((a.min - b.min).length() < 1e-3, "the left and top edges stay");
+    }
+    run(&mut s, "align.match_size", json!({"to_stage": true}));
+    let (w, h) = (s.doc.stage.width as f32, s.doc.stage.height as f32);
+    assert!(boxes(&s).iter().all(|b| (b.width() - w).abs() < 1e-2 && (b.height() - h).abs() < 1e-2), "the stage's size");
+    run(&mut s, "edit.undo", json!({}));
+    run(&mut s, "edit.undo", json!({}));
+
+    // Space evenly: equal gaps between neighbours across, the outer two unmoved.
+    run(&mut s, "align.space_h", json!({}));
+    let mut b = boxes(&s);
+    b.sort_by(|p, q| p.min.x.total_cmp(&q.min.x));
+    let gaps: Vec<f32> = b.windows(2).map(|w| w[1].min.x - w[0].max.x).collect();
+    assert!((gaps[0] - gaps[1]).abs() < 1e-3, "{gaps:?}");
+    let mut was = before.clone();
+    was.sort_by(|p, q| p.min.x.total_cmp(&q.min.x));
+    assert!((b[0].min.x - was[0].min.x).abs() < 1e-3 && (b[2].max.x - was[2].max.x).abs() < 1e-3, "the outer two stay");
+    run(&mut s, "align.space_v", json!({}));
+    let mut b = boxes(&s);
+    b.sort_by(|p, q| p.min.y.total_cmp(&q.min.y));
+    let gaps: Vec<f32> = b.windows(2).map(|w| w[1].min.y - w[0].max.y).collect();
+    assert!((gaps[0] - gaps[1]).abs() < 1e-3, "{gaps:?}");
+    // Two objects have no gap between others to share.
+    run(&mut s, "edit.deselect", json!({}));
+    let ids: Vec<u64> = s.visible_elements().iter().take(2).map(|e| e.id.0).collect();
+    run(&mut s, "element.select", json!({"ids": ids}));
+    assert!(s.execute("align.space_h", &json!({})).is_err());
+    // One long object over two short ones: no even spacing keeps their order, so nothing moves.
+    let mut s = Session::default();
+    for (x, w) in [(0, 200), (20, 20), (80, 20)] {
+        run(&mut s, "draw.rect", json!({"x": x, "y": 0, "w": w, "h": 10, "stroke": null, "object": true}));
+    }
+    run(&mut s, "edit.select_all", json!({}));
+    let before = boxes(&s);
+    assert!(s.execute("align.space_h", &json!({})).is_err());
+    assert_eq!(boxes(&s), before);
+}
+
 /// #301, #297: a raw rectangle (one fill and one stroke per side, ADR 0042) aligns, distributes,
 /// turns and scales as one shape, so its outline stays on its fill.
 #[test]
@@ -344,7 +447,9 @@ fn a_raw_drawing_aligns_distributes_and_turns_as_one() {
     run(&mut s, "edit.select_all", json!({}));
     run(&mut s, "align.left", json!({}));
     assert!(same(&layout(&s), &shape));
-    assert!(s.selection_bounds().min.x.abs() < 1e-3, "{:?}", s.selection_bounds());
+    // Its outline goes to the stage's edge, with its stroke over it (#569).
+    let outline = s.selected_elements().iter().fold(Rect::EMPTY, |r, (l, e)| r.union(&s.element_outline_bounds_on(*l, e.id)));
+    assert!(outline.min.x.abs() < 1e-3 && s.selection_bounds().min.x < outline.min.x, "{outline:?} {:?}", s.selection_bounds());
 
     // The Properties panel's Rotation and Scale fields: about the drawing's centre, as Rotate 90°
     // does.
@@ -371,6 +476,66 @@ fn a_raw_drawing_aligns_distributes_and_turns_as_one() {
     let mut fresh = Session::default();
     raw_rect(&mut fresh);
     assert!(same(&layout(&s), &layout(&fresh)) && (s.selection_bounds().min - fresh.selection_bounds().min).length() < 0.01, "back where it was");
+}
+
+/// #568: inside a symbol, To Stage aligns to the symbol's own space: centring puts the
+/// artwork's centre on the symbol's registration point, not the middle of the document's stage.
+#[test]
+fn align_to_stage_inside_a_symbol_centres_on_its_registration_point() {
+    let mut s = Session::default();
+    run(&mut s, "draw.rect", json!({"x": 40, "y": 60, "w": 100, "h": 100, "stroke": null}));
+    run(&mut s, "edit.select_all", json!({}));
+    run(&mut s, "modify.convert_to_symbol", json!({"name": "Box"}));
+    let inst = s.selection.ids().next().unwrap();
+    run(&mut s, "symbol.edit", json!({"id": inst.0}));
+    run(&mut s, "edit.select_all", json!({}));
+    run(&mut s, "align.hcenter", json!({"to_stage": true}));
+    run(&mut s, "align.vcenter", json!({"to_stage": true}));
+    let c = s.selection_bounds().center();
+    assert!(c.x.abs() < 0.01 && c.y.abs() < 0.01, "centred on the registration point: {c:?}");
+    // A group opened inside the symbol is still inside it.
+    run(&mut s, "element.translate", json!({"dx": 70, "dy": 30}));
+    run(&mut s, "modify.group", json!({}));
+    let group = s.selection.ids().next().unwrap();
+    run(&mut s, "symbol.edit", json!({"id": group.0}));
+    run(&mut s, "edit.select_all", json!({}));
+    run(&mut s, "align.hcenter", json!({"to_stage": true}));
+    let c = s.selection_bounds().center();
+    assert!(c.x.abs() < 0.01, "inside a group in the symbol, still its registration point: {c:?}");
+    // On the stage itself, To Stage is still the document's stage.
+    run(&mut s, "symbol.exit", json!({"all": true}));
+    run(&mut s, "edit.select_all", json!({}));
+    run(&mut s, "align.hcenter", json!({"to_stage": true}));
+    let c = s.selection_bounds().center();
+    assert!((c.x - s.doc.stage.width as f32 / 2.0).abs() < 0.01, "{c:?}");
+}
+
+/// #569: align lines up where a shape's outline is, not the edge of its stroke, so a thick
+/// stroke hangs over the edge it is aligned to, and changing its width moves nothing.
+#[test]
+fn align_lines_up_outlines_not_stroke_edges() {
+    use anicraft_geom::Rect;
+    for object in [false, true] {
+        let mut s = Session::default();
+        run(&mut s, "draw.rect", json!({"x": 100, "y": 100, "w": 200, "h": 100, "fill": "#3366ff", "stroke": "#000000", "stroke_width": 16, "object": object}));
+        run(&mut s, "edit.select_all", json!({}));
+        let outline = |s: &Session| s.selected_elements().iter().fold(Rect::EMPTY, |r, (l, e)| r.union(&s.element_outline_bounds_on(*l, e.id)));
+        let covered = |s: &Session| s.selected_elements().iter().fold(Rect::EMPTY, |r, (l, e)| r.union(&s.element_bounds_on(*l, e.id)));
+        run(&mut s, "align.left", json!({"to_stage": true}));
+        run(&mut s, "align.top", json!({"to_stage": true}));
+        let (o, c) = (outline(&s), covered(&s));
+        assert!(o.min.x.abs() < 0.01 && o.min.y.abs() < 0.01, "the outline's corner is on the stage's (object: {object}): {o:?}");
+        assert!(c.min.x < o.min.x && c.min.y < o.min.y, "the stroke hangs over the edge (object: {object})");
+    }
+    // A turned outline is measured by its own points, not by its unturned box turned with it.
+    let mut s = Session::default();
+    run(&mut s, "draw.ellipse", json!({"x": 100, "y": 100, "w": 200, "h": 40, "stroke": null, "object": true}));
+    run(&mut s, "edit.select_all", json!({}));
+    run(&mut s, "element.set_transform", json!({"rotation": 45}));
+    let (l, e) = s.selected_elements()[0].clone();
+    let outline = s.element_outline_bounds_on(l, e.id);
+    let boxed = s.display_list().items.iter().filter(|i| i.element == e.id).fold(Rect::EMPTY, |r, i| r.union(&i.path.bounds().transformed(&i.transform)));
+    assert!(outline.width() < boxed.width() - 1.0, "{outline:?} inside {boxed:?}");
 }
 
 #[test]
@@ -429,6 +594,35 @@ fn svg_round_trip_looks_the_same_and_imports_as_one_undo_step() {
     std::fs::write(&fake, "<html/>").unwrap();
     assert!(s.execute("file.import", &json!({"path": fake.display().to_string()})).is_err());
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn svg_import_matches_stage_only_when_requested_and_undoes_together() {
+    let dir = std::env::temp_dir().join(format!("anicraft-svg-stage-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let svg = dir.join("badge.svg");
+    std::fs::write(&svg, r#"<svg width="40.5" height="20.25"><rect width="40.5" height="20.25"/></svg>"#).unwrap();
+    let mut s = Session::default();
+    run(&mut s, "file.new", json!({"width": 160, "height": 80, "fps": 30}));
+    let previous = s.doc.stage;
+    let name = svg.display().to_string();
+    run(&mut s, "file.import", json!({"path": name}));
+    assert_eq!(s.doc.stage, previous);
+    let centered = s.visible_elements()[0].transform.translation();
+    assert!(centered.x > 0.0 && centered.y > 0.0, "the default import still centres the file");
+    s.undo().unwrap();
+
+    let report = run(&mut s, "file.import", json!({"path": name, "match_stage": true}));
+    let stage = s.doc.stage;
+    assert_eq!(stage.width, report["width"].as_f64().unwrap().ceil() as u32);
+    assert_eq!(stage.height, report["height"].as_f64().unwrap().ceil() as u32);
+    assert_eq!(stage.fps, previous.fps);
+    let offset = s.visible_elements()[0].transform.translation();
+    assert!(offset.x.abs() < 1e-5 && offset.y.abs() < 1e-5, "the SVG starts at the new stage's origin: {offset:?}");
+    s.undo().unwrap();
+    assert_eq!(s.doc.stage, previous);
+    assert!(s.visible_elements().is_empty());
+    std::fs::remove_dir_all(&dir).unwrap();
 }
 
 #[test]
@@ -1456,6 +1650,21 @@ fn copy_and_paste_frames_inserts_and_cuts_at_the_selection_edges() {
     run(&mut s, "timeline.cut_frames", json!({"frame": 0, "count": 2}));
     assert_eq!(s.doc.frame_count(), before - 2);
     assert!(s.execute("timeline.copy_frames", &json!({"frame": 500})).is_err(), "nothing there");
+}
+
+#[test]
+fn a_failed_cut_keeps_previously_copied_frames() {
+    let mut s = Session::default();
+    run(&mut s, "draw.rect", json!({"x": 0, "y": 0, "w": 10, "h": 10}));
+    run(&mut s, "timeline.copy_frames", json!({"frame": 0}));
+    run(&mut s, "layer.new", json!({}));
+
+    let err = s.execute("timeline.cut_frames", &json!({"frame": 0})).unwrap_err();
+    assert!(matches!(err, EngineError::State(message) if message == "cannot remove the layer's only frame"));
+
+    run(&mut s, "timeline.paste_frames", json!({"frame": 0}));
+    let pasted = s.active_layer().unwrap().keyframe_at(0).unwrap();
+    assert_eq!(pasted.elements.len(), 1);
 }
 
 #[test]

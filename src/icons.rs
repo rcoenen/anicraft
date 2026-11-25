@@ -53,6 +53,11 @@ pub enum Icon {
     AlignBottom,
     DistributeH,
     DistributeV,
+    MatchWidth,
+    MatchHeight,
+    MatchSize,
+    SpaceH,
+    SpaceV,
     Mask,
     Masked,
     Folder,
@@ -74,6 +79,7 @@ pub enum Icon {
     EditMultiple,
     Layer,
     Parent,
+    ActiveLayer,
     InsertFrame,
     InsertKeyframe,
     InsertBlankKeyframe,
@@ -93,7 +99,7 @@ pub enum Icon {
 
 impl Icon {
     #[cfg(test)]
-    pub const ALL: [Icon; 75] = [
+    pub const ALL: [Icon; 81] = [
         Icon::PanelProperties,
         Icon::PanelSwatches,
         Icon::PanelLibrary,
@@ -113,6 +119,7 @@ impl Icon {
         Icon::Bind,
         Icon::Layer,
         Icon::Parent,
+        Icon::ActiveLayer,
         Icon::EditMultiple,
         Icon::Bone,
         Icon::Magnet,
@@ -138,6 +145,11 @@ impl Icon {
         Icon::AlignBottom,
         Icon::DistributeH,
         Icon::DistributeV,
+        Icon::MatchWidth,
+        Icon::MatchHeight,
+        Icon::MatchSize,
+        Icon::SpaceH,
+        Icon::SpaceV,
         Icon::Select,
         Icon::Subselect,
         Icon::Transform,
@@ -239,6 +251,11 @@ impl Icon {
             Icon::AlignBottom => ("anicraft-align-bottom", false),
             Icon::DistributeH => ("anicraft-distribute-h", false),
             Icon::DistributeV => ("anicraft-distribute-v", false),
+            Icon::MatchWidth => ("anicraft-match-width", false),
+            Icon::MatchHeight => ("anicraft-match-height", false),
+            Icon::MatchSize => ("anicraft-match-size", false),
+            Icon::SpaceH => ("anicraft-space-h", false),
+            Icon::SpaceV => ("anicraft-space-v", false),
             // Layer types: a stencil (mask) and the area inside it (masked).
             Icon::Mask => ("anicraft-mask", false),
             Icon::Masked => ("anicraft-masked", false),
@@ -262,6 +279,9 @@ impl Icon {
             // A layer's dot joined to the layers that follow it (AniCraft original, on Lucide's
             // grid): the timeline's parenting view (ADR 0113).
             Icon::Parent => ("anicraft-parent", false),
+            // One layer drawn whole over the others dashed (AniCraft original, on Lucide's grid):
+            // the timeline's View Only the Active Layer.
+            Icon::ActiveLayer => ("anicraft-active-layer", false),
             // Insert Frame / Keyframe / Blank Keyframe: the timeline's own marks (a frame cell, a
             // filled keyframe dot, a hollow blank-keyframe dot), each with a plus (AniCraft
             // originals, on Lucide's grid).
@@ -332,6 +352,11 @@ static FILES: &[(&str, &str)] = &[
     ("anicraft-align-bottom", include_str!("../assets/icons/anicraft-align-bottom.svg")),
     ("anicraft-distribute-h", include_str!("../assets/icons/anicraft-distribute-h.svg")),
     ("anicraft-distribute-v", include_str!("../assets/icons/anicraft-distribute-v.svg")),
+    ("anicraft-match-width", include_str!("../assets/icons/anicraft-match-width.svg")),
+    ("anicraft-match-height", include_str!("../assets/icons/anicraft-match-height.svg")),
+    ("anicraft-match-size", include_str!("../assets/icons/anicraft-match-size.svg")),
+    ("anicraft-space-h", include_str!("../assets/icons/anicraft-space-h.svg")),
+    ("anicraft-space-v", include_str!("../assets/icons/anicraft-space-v.svg")),
     ("anicraft-mask", include_str!("../assets/icons/anicraft-mask.svg")),
     ("anicraft-width", include_str!("../assets/icons/anicraft-width.svg")),
     ("anicraft-gradient-transform", include_str!("../assets/icons/anicraft-gradient-transform.svg")),
@@ -349,6 +374,7 @@ static FILES: &[(&str, &str)] = &[
     ("anicraft-bone", include_str!("../assets/icons/anicraft-bone.svg")),
     ("anicraft-bind", include_str!("../assets/icons/anicraft-bind.svg")),
     ("anicraft-parent", include_str!("../assets/icons/anicraft-parent.svg")),
+    ("anicraft-active-layer", include_str!("../assets/icons/anicraft-active-layer.svg")),
     ("anicraft-warp", include_str!("../assets/icons/anicraft-warp.svg")),
     ("anicraft-edit-multiple", include_str!("../assets/icons/anicraft-edit-multiple.svg")),
     ("folder", include_str!("../assets/icons/folder.svg")),

@@ -45,6 +45,7 @@ const FRAMES: &[(&str, &[u32])] = &[
     ("text", &[0]),
     ("textfields", &[0]),
     ("tweens", &[0, 6, 12]),
+    ("unknowns", &[0]),
     ("video", &[0]),
 ];
 
@@ -73,6 +74,19 @@ const PROBES: &[(&str, u32, f32, f32, u32)] = &[
     ("video", 0, 100.0, 80.0, 0xE9C46A),
     ("video", 0, 200.0, 50.0, 0x264653),
     ("video", 0, 10.0, 150.0, 0xFFFFFF),
+    // ADR 0133: a stroke of an unknown kind is drawn; an outline run cut short keeps what came
+    // before the cut (to x 70) and loses the rest of that run only, so the run after it is
+    // drawn; a line in a style the shape lacks is not. Then the whole fill, the fill of an
+    // unknown kind (left out), and the fill missing a side (closed straight across).
+    ("unknowns", 0, 80.0, 30.0, 0x264653),
+    ("unknowns", 0, 45.0, 60.0, 0xE76F51),
+    ("unknowns", 0, 120.0, 60.0, 0xF4F1EA),
+    ("unknowns", 0, 230.0, 60.0, 0xE76F51),
+    ("unknowns", 0, 80.0, 80.0, 0xF4F1EA),
+    ("unknowns", 0, 50.0, 130.0, 0x2A9D8F),
+    ("unknowns", 0, 130.0, 130.0, 0xF4F1EA),
+    ("unknowns", 0, 210.0, 130.0, 0xE9C46A),
+    ("unknowns", 0, 280.0, 130.0, 0xF4F1EA),
     ("primitives", 0, 40.0, 50.0, 0xF2CC8F),
     ("primitives", 0, 210.0, 40.0, 0xE07A5F),
     // The nested group's square at half size (#411).

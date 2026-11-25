@@ -88,7 +88,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
         Kind::Expand => (tr!("Expand Fill"), "expand_fill"),
         Kind::Soften => (tr!("Soften Fill Edges"), "soften_fill_edges"),
     };
-    crate::windows::new(ctx, title).id(egui::Id::new(id)).collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, -80.0]).show(ctx, |ui| {
+    crate::windows::new(ctx, title).id(egui::Id::unique(id)).collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, -80.0]).show(ctx, |ui| {
         ui.set_min_width(340.0);
         form_row(ui, FORM_LABEL_DIALOG, tr!("Distance"), |ui| {
             let tip = match d.kind {

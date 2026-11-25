@@ -1,0 +1,26 @@
+# The legacy .fla corpus: EDAP Tools' public sample rigs and templates, each published both as a
+# Flash 8–CS4 era binary .fla ("for Flash 8–CS6") and as a modern Animate .fla ("for Animate").
+# They are CC BY-NC-SA 3.0, so they are never committed; this manifest pins them for the
+# env-gated tests (crates/fla/tests/corpus.rs, corpus_text.rs). scripts/fetch-fla-corpus.sh
+# downloads them, checks each sha256 and unpacks the zips:
+#   scripts/fetch-fla-corpus.sh <folder>
+#   ANICRAFT_FLA_CORPUS=<folder> cargo test -p anicraft-fla
+# Source: https://flash-powertools.com/downloads/ (EDAP Tools), checked 2026-11-22.
+# Columns, tab-separated: sha256, file, download URL, folder to unpack into ("-": none),
+# licence, title.
+eff32d4c68aa647a15f0fce59e983a852af8469ddbc429206ca19b58fafec273	magnebot-legacy.fla	https://flash-powertools.com/download/4443/	-	CC-BY-NC-SA-3.0	SMR MagneBot v4a (Flash 8–CS6)
+2070559a1ae378f87a80cd20612aa9c416cf374628035e1c59df5a703bfeda02	magnebot-animate.fla	https://flash-powertools.com/download/5732/	-	CC-BY-NC-SA-3.0	SMR MagneBot v4a (Animate)
+f28e667584e2ff3ad69134dd5fa1527f702af0523450835e16407010306b6ee6	kinefox-legacy.fla	https://flash-powertools.com/download/4449/	-	CC-BY-NC-SA-3.0	SMR KineFox v4a (Flash 8–CS6)
+017d83b807ac30cc34e814d8351381c455521da9bb359149f3b38c84fb629ea6	kinefox-animate.fla	https://flash-powertools.com/download/5738/	-	CC-BY-NC-SA-3.0	SMR KineFox v4a (Animate)
+9074f46e7deaedbf9ed75ef5c6ad6d6cb74426a2e691d34d24334dc36b1291f0	rabbit-legacy.fla	https://flash-powertools.com/download/4447/	-	CC-BY-NC-SA-3.0	SMR Rabbit v4a (Flash 8–CS6)
+58841990eec402dd822cda3a40c91077084c18ee25f9e2a1fe6cda13bbf11b9e	rabbit-animate.fla	https://flash-powertools.com/download/5736/	-	CC-BY-NC-SA-3.0	SMR Rabbit v4a (Animate)
+fc9ef63ef712b49ee67becb5361cb4850296e42c9ef98dcbdf9f670dfdfcc321	mademoiselle-legacy.fla	https://flash-powertools.com/download/5399/	-	CC-BY-NC-SA-3.0	SMR Mademoiselle D (Flash 8–CS6)
+7f9cafef7120eec9132a10cfa27147e3cf0abd5e8e97a2d72d5ff41bc5093f87	mademoiselle-animate.fla	https://flash-powertools.com/download/5742/	mademoiselle-animate	CC-BY-NC-SA-3.0	SMR Mademoiselle D (Animate, a zipped XFL folder)
+e9b1baa120eb09d175667a323b0e981923c126f2fd2abe78331fef7cab4970e4	giskard-legacy.fla	https://flash-powertools.com/download/5923/	-	CC-BY-NC-SA-3.0	SMR Giskard v1b (Flash 8–CS6)
+a176eefa8cc749d9d288ffb346dd872a8582188e825cf7e0e234a9ff0b82824e	giskard-animate.fla	https://flash-powertools.com/download/5972/	-	CC-BY-NC-SA-3.0	SMR Giskard v1b (Animate)
+3c583bb70f164e829e326010f84436e81b52ecbe1509f5dcff97e9c368723ea0	movietemplate-legacy.fla	https://flash-powertools.com/download/4441/	-	CC-BY-NC-SA-3.0	Movie Template v3d (Flash 8–CS6)
+960085eb7e4369874a9ceb93344947b36c561f1779aecb1f2602bdedd2e21f98	movietemplate-animate.fla	https://flash-powertools.com/download/5730/	-	CC-BY-NC-SA-3.0	Movie Template v3d (Animate)
+78b83d9c7cc196f35e993f42b8c6c4ddb5b8f0b5a57b690deb760301c50a221a	robokit-legacy.zip	https://flash-powertools.com/download/4445/	robokit-legacy	CC-BY-NC-SA-3.0	SMR FreeStyle RoboKit v1b (Flash 8–CS6, zip)
+20cb4fd75c30d27f6c741c929719e552e5a3d1670733faa8d864ad6c0c2ef537	robokit-animate.fla	https://flash-powertools.com/download/5734/	robokit-animate	CC-BY-NC-SA-3.0	SMR FreeStyle RoboKit v1b (Animate, zip)
+51b5a987fd27534dd7e9f9961c1c6599df6ff70b9057d84a4244b640b578b9eb	storyboard-legacy.zip	https://flash-powertools.com/download/2350/	storyboard-legacy	CC-BY-NC-SA-3.0	Storyboard Template and Sample Animatic (Flash 8–CS6, zip)
+7dc9af8d0f1d6506721f475e9a5cc98c840e5387c4398ba35adc948eed5e3f34	storyboard-animate.fla	https://flash-powertools.com/download/5740/	storyboard-animate	CC-BY-NC-SA-3.0	Storyboard Template and Sample Animatic (Animate, zip)

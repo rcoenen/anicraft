@@ -90,6 +90,7 @@ Asset Warp, the Paint Brush and Fluid Brush, Deco and the Spray Brush. More on t
 | Import to Stage | **Ctrl+R** | File › Import › Import to Stage… |
 | Edit symbols | **Ctrl+E** | Edit › Edit Symbols |
 | Break apart | **Ctrl+B** | Modify › Break Apart |
+| Distribute to layers | **Ctrl+Shift+D** | Modify › Timeline › Distribute to Layers |
 | Duplicate | **Ctrl+D** | Edit › Duplicate |
 | Paste in place | **Ctrl+Shift+V** | Edit › Paste in Place |
 | Deselect all | **Ctrl+Shift+A** | Edit › Deselect All |

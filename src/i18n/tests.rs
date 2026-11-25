@@ -53,7 +53,7 @@ fn without_tests(src: &str) -> String {
 /// Code before a literal, on its line, that makes it something other than interface text:
 /// logs and console output, ids and keys, commands and their parameters, attributes.
 const NOT_UI: &[&str] = &[
-    "eprintln!(", "println!(", "print!(", "panic!(", "assert", "unreachable!(", "Id::new(", "id_salt(", "persistent_id(", "json!(", "execute(", "perform(", "invoke(", ".run(", "find_command(", "#[", "env!(", "include_str!(", "include_bytes!(", "concat!(", "var(",
+    "eprintln!(", "println!(", "print!(", "panic!(", "assert", "unreachable!(", "Id::unique(", "id_salt(", "persistent_id(", "json!(", "execute(", "perform(", "invoke(", ".run(", "find_command(", "#[", "env!(", "include_str!(", "include_bytes!(", "concat!(", "var(",
     "contains(", "starts_with(", "ends_with(", "strip_prefix(", "strip_suffix(", "matches!(", "== ", "!= ",
     // The start-up log (`startup::line`): English, like console messages, for bug reports.
     "line(&", "write(&format!(",
@@ -575,8 +575,33 @@ fn strings_in(v: &serde_json::Value, out: &mut BTreeSet<String>) {
     }
 }
 
-/// Names egui gives its own parts.
-const EGUI_OWN: [&str; 1] = ["Close window"];
+/// Names egui gives its own parts: a window's close button, and (since egui 0.37) the handles
+/// that resize a panel or a window. egui offers no way to name them ourselves.
+const EGUI_OWN: [&str; 14] = [
+    // egui's colour mixer (the picker's Mixer view) names its sliders and its value button, and
+    // since egui 0.37 passes their tooltips on too.
+    "Hue",
+    "Alpha",
+    "Click to copy color values",
+    "Showing color values in 0-255 gamma space",
+    "Close window",
+    "Resize panel",
+    "Resize window right edge",
+    "Resize window left edge",
+    "Resize window bottom edge",
+    "Resize window top edge",
+    "Resize window bottom-right corner",
+    "Resize window top-right corner",
+    "Resize window bottom-left corner",
+    "Resize window top-left corner",
+];
+
+/// A file's path, as a recent file's or a template's tooltip shows it (egui 0.37 hands a tooltip
+/// to screen readers as the control's description): data, not words to translate.
+fn is_file_path(name: &str) -> bool {
+    let ext = std::path::Path::new(name).extension().and_then(|e| e.to_str());
+    name.contains(['/', '\\']) && !name.ends_with('…') && ext.is_some_and(|e| !e.is_empty() && e.chars().all(|c| c.is_ascii_alphanumeric()))
+}
 
 /// Names a screen reader would announce that are still plain English in the pseudo-locale,
 /// for the window after `setup` (a few frames to settle).
@@ -612,6 +637,16 @@ fn pseudo_a11y_name_exception_is_only_the_product_name() {
     assert!(!pseudo_name_is_translated_or_exempt("Save AniCraft"));
 }
 
+#[test]
+fn a_file_path_is_data_but_a_sentence_with_a_slash_is_not() {
+    assert!(is_file_path("Characters/Walk cycle.anicraft"));
+    assert!(is_file_path("/tmp/AniCraft samples/Title card.anicraft"));
+    assert!(is_file_path(r"C:\Users\me\Walk cycle.fla"));
+    assert!(!is_file_path("Import/Export…"));
+    assert!(!is_file_path("Open an .fla or .xfl"));
+    assert!(!is_file_path("Show or hide the layer"));
+}
+
 /// Names in `nodes` that are ours and still plain English.
 fn plain_names(what: &str, app: &crate::app::App, nodes: Vec<(egui::accesskit::NodeId, egui::accesskit::Node)>) -> Vec<String> {
     // Document text is the document's (layer, symbol and scene names): not ours to translate.
@@ -619,6 +654,9 @@ fn plain_names(what: &str, app: &crate::app::App, nodes: Vec<(egui::accesskit::N
     if let Ok(v) = serde_json::to_value(&app.s.doc) {
         strings_in(&v, &mut doc_text);
     }
+    // So are the names of documents opened from a file (their file names, in the Window menu).
+    // An unsaved document's "Untitled" is ours, so it still has to be translated.
+    doc_text.extend(crate::tabs::infos(app).into_iter().filter(|t| t.path.is_some()).map(|t| t.name));
     let mut found = BTreeSet::new();
     for (_, n) in nodes {
         for name in [n.label(), n.description()].into_iter().flatten() {
@@ -626,7 +664,7 @@ fn plain_names(what: &str, app: &crate::app::App, nodes: Vec<(egui::accesskit::N
             // (docs/localisation.md › Not yet). The product name stays as it is in every
             // language (the macOS app menu is titled with it, ADR 0006), as the source scan allows.
             let translated = pseudo_name_is_translated_or_exempt(name);
-            let ours = scan::is_prose(name) && !doc_text.contains(name) && !doc_text.iter().any(|d| name.contains(d.as_str()));
+            let ours = scan::is_prose(name) && !is_file_path(name) && !doc_text.contains(name) && !doc_text.iter().any(|d| name.contains(d.as_str()));
             if ours && !translated {
                 found.insert(format!("[{what}] {:?} {name:?}", n.role()));
             }

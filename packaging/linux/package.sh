@@ -10,7 +10,7 @@
 # Every format installs the desktop entry, the AppStream metainfo, the hicolor icons and the
 # MIME types (.anicraft is AniCraft's; .fla and .xfl open as an untitled import).
 #
-# Usage: packaging/linux/package.sh [--skip-build] [--formats "appimage deb rpm tar"]
+# Usage: packaging/linux/package.sh [--skip-build] [--formats "appimage deb rpm tar"] [--arch-tar-dir DIRECTORY]
 #
 # Needs: cargo; nfpm for deb/rpm (https://nfpm.goreleaser.com). AppImage tooling is downloaded
 # at verified pins into $CARGO_TARGET_DIR. Build on an old distro (CI: Ubuntu 22.04, glibc 2.35)
@@ -28,10 +28,16 @@ HERE="$ROOT/packaging/linux"
 
 SKIP_BUILD=0
 FORMATS="appimage deb rpm tar"
+ARCH_TAR_DIR=
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --skip-build) SKIP_BUILD=1; shift ;;
     --formats) FORMATS="$2"; shift 2 ;;
+    --arch-tar-dir)
+      [[ -n "${2:-}" ]] || { echo "error: --arch-tar-dir needs a directory" >&2; exit 2; }
+      ARCH_TAR_DIR="$2"
+      shift 2
+      ;;
     -h | --help) sed -n '2,21p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -45,9 +51,24 @@ case "$ARCH" in
   *) echo "unsupported architecture $ARCH" >&2; exit 2 ;;
 esac
 export ANICRAFT_MAINTAINER="${ANICRAFT_MAINTAINER:-AniCraft maintainers <anicraft@storyteller.ai>}"
-BASENAME="anicraft-$VERSION-linux-$ARCH"
+IS_NIGHTLY=0
+BASENAME_VERSION="$VERSION"
+if [[ "${ANICRAFT_BUILD_CHANNEL:-}" == nightly-v1 || "$VERSION" == *-nightly* ]]; then
+  IS_NIGHTLY=1
+  export ANICRAFT_BUILD_CHANNEL=nightly-v1
+  export ANICRAFT_OVERRIDE_VERSION="$VERSION"
+  if [[ "$BASENAME_VERSION" != *-nightly* ]]; then
+    BASENAME_VERSION="$VERSION-nightly"
+  fi
+fi
+BASENAME="anicraft-$BASENAME_VERSION-linux-$ARCH"
 
-echo "==> AniCraft $VERSION for Linux $ARCH ($FORMATS)"
+if [[ -n "$ARCH_TAR_DIR" && "$IS_NIGHTLY" != 1 ]]; then
+  echo "error: --arch-tar-dir is only for Nightly builds" >&2
+  exit 2
+fi
+
+echo "==> AniCraft $VERSION for Linux $ARCH ($FORMATS, channel=${ANICRAFT_BUILD_CHANNEL:-stable})"
 
 if [[ "$SKIP_BUILD" = 0 ]]; then
   (cd "$ROOT" && cargo build --release --locked -p anicraft -p anicraft-cli --bins ${CROSS_TARGET:+--target "$CROSS_TARGET"})
@@ -62,6 +83,11 @@ install -Dm755 "$BIN/anicraft" "$STAGE/usr/bin/anicraft"
 install -Dm755 "$BIN/anicraft-cli" "$STAGE/usr/bin/anicraft-cli"
 "${CROSS_COMPILE:-}strip" "$STAGE/usr/bin/anicraft" "$STAGE/usr/bin/anicraft-cli" 2>/dev/null || true
 install -Dm644 "$HERE/$APP_ID.desktop" "$STAGE/usr/share/applications/$APP_ID.desktop"
+if [[ "$IS_NIGHTLY" = 1 ]]; then
+  sed -e 's|^StartupWMClass=.*|StartupWMClass=ai.storyteller.anicraft.nightly-v1|' \
+      "$STAGE/usr/share/applications/$APP_ID.desktop" >"$STAGE/usr/share/applications/$APP_ID.desktop.tmp"
+  mv "$STAGE/usr/share/applications/$APP_ID.desktop.tmp" "$STAGE/usr/share/applications/$APP_ID.desktop"
+fi
 install -Dm644 "$HERE/$APP_ID.mime.xml" "$STAGE/usr/share/mime/packages/$APP_ID.xml"
 mkdir -p "$STAGE/usr/share/metainfo"
 sed -e "s/@VERSION@/$VERSION/g" -e "s/@DATE@/$ANICRAFT_BUILD_DATE/g" \
@@ -94,13 +120,85 @@ if has tar; then
   echo "wrote $DIST/$BASENAME.tar.gz"
 fi
 
+# The Arch handoff keeps the same basename as the plain tarball in a separate directory.
+# Flatpak, OCI and direct tar consumers still get the original binary, not this launcher.
+if [[ -n "$ARCH_TAR_DIR" ]]; then
+  mkdir -p "$ARCH_TAR_DIR"
+  if [[ "$(cd "$ARCH_TAR_DIR" && pwd -P)" == "$(cd "$DIST" && pwd -P)" ]]; then
+    echo "error: the Arch tar directory must differ from the release directory" >&2
+    exit 2
+  fi
+  bash "$HERE/nightly-arch-tar.sh" "$STAGE/usr" "$WORK/arch-tar" "$ARCH_TAR_DIR" "$BASENAME"
+fi
+
 # ---- .deb / .rpm --------------------------------------------------------------------------------
 if has deb || has rpm; then
   command -v nfpm >/dev/null || { echo "error: nfpm not found (https://nfpm.goreleaser.com/install/)" >&2; exit 1; }
   export VERSION
   export NFPM_ARCH="$DEB_ARCH"
+  NFPM_STAGE="$STAGE"
+  export NFPM_NAME="anicraft"
+  export NFPM_BIN="anicraft"
+  export NFPM_CLI="anicraft-cli"
+  if [[ "$IS_NIGHTLY" = 1 ]]; then
+    NIGHTLY_DESK_ID="$APP_ID.nightly-v1"
+    export NFPM_NAME="anicraft-nightly"
+    export NFPM_BIN="anicraft-nightly"
+    export NFPM_CLI="anicraft-nightly-cli"
+    NFPM_STAGE="$WORK/nfpm-root"
+    rm -rf "$NFPM_STAGE"
+    cp -R "$STAGE" "$NFPM_STAGE"
+    install -Dm755 "$NFPM_STAGE/usr/bin/anicraft" "$NFPM_STAGE/usr/lib/anicraft-nightly/anicraft"
+    # The shared nightly launcher (packaging/linux/nightly-launch.sh): the real program in
+    # usr/lib/anicraft-nightly, started with --launch-profile nightly-v1 --profile-root <its own
+    # profile> -- <arguments>, so no format can start it without a private profile.
+    install -Dm755 "$HERE/nightly-launch.sh" "$NFPM_STAGE/usr/bin/$NFPM_BIN"
+    rm -f "$NFPM_STAGE/usr/bin/anicraft"
+    install -Dm755 "$NFPM_STAGE/usr/bin/anicraft-cli" "$NFPM_STAGE/usr/lib/anicraft-nightly/anicraft-cli"
+    cat >"$NFPM_STAGE/usr/bin/$NFPM_CLI" <<'CLI_WRAPPER'
+#!/bin/sh
+set -eu
+if [ "${1:-}" = "--version" ] || [ "${1:-}" = "-V" ]; then
+  exec /usr/lib/anicraft-nightly/anicraft-cli "$@"
+fi
+profile_base="${XDG_DATA_HOME:-${HOME:?HOME is required}/.local/share}"
+export XDG_CONFIG_HOME="$profile_base/anicraft-nightly"
+exec /usr/lib/anicraft-nightly/anicraft-cli "$@"
+CLI_WRAPPER
+    chmod 755 "$NFPM_STAGE/usr/bin/$NFPM_CLI"
+    rm -f "$NFPM_STAGE/usr/bin/anicraft-cli"
+    mv "$NFPM_STAGE/usr/share/doc/anicraft" "$NFPM_STAGE/usr/share/doc/$NFPM_NAME"
+    sed -e "s#^Exec=anicraft\([[:space:]]\|$\)#Exec=$NFPM_BIN\1#" \
+        -e "s|^TryExec=anicraft$|TryExec=$NFPM_BIN|" \
+        -e "s|^Icon=$APP_ID$|Icon=$NIGHTLY_DESK_ID|" \
+        -e "s|^Name=AniCraft$|Name=AniCraft Nightly|" \
+        -e '/^MimeType=/d' \
+        "$NFPM_STAGE/usr/share/applications/$APP_ID.desktop" >"$NFPM_STAGE/usr/share/applications/$NIGHTLY_DESK_ID.desktop"
+    rm -f "$NFPM_STAGE/usr/share/applications/$APP_ID.desktop"
+    sed -e "s|<id>$APP_ID</id>|<id>$NIGHTLY_DESK_ID</id>|g" \
+        -e "s|<name>AniCraft</name>|<name>AniCraft Nightly</name>|g" \
+        -e "s|<launchable type=\"desktop-id\">$APP_ID.desktop</launchable>|<launchable type=\"desktop-id\">$NIGHTLY_DESK_ID.desktop</launchable>|g" \
+        -e "s|<icon type=\"stock\">$APP_ID</icon>|<icon type=\"stock\">$NIGHTLY_DESK_ID</icon>|g" \
+        -e "s|<binary>anicraft</binary>|<binary>$NFPM_BIN</binary>|g" \
+        -e "s|<binary>anicraft-cli</binary>|<binary>$NFPM_CLI</binary>|g" \
+        -e '/<mediatype>/d' \
+        "$NFPM_STAGE/usr/share/metainfo/$APP_ID.metainfo.xml" >"$NFPM_STAGE/usr/share/metainfo/$NIGHTLY_DESK_ID.metainfo.xml"
+    rm -f "$NFPM_STAGE/usr/share/metainfo/$APP_ID.metainfo.xml"
+    rm -rf "$NFPM_STAGE/usr/share/mime"
+    NIGHTLY_ICON="$ROOT/assets/app-icon/anicraft-nightly.png"
+    if [[ ! -f "$NIGHTLY_ICON" ]]; then
+      NIGHTLY_ICON="$ROOT/assets/app-icon/hicolor/256x256/apps/$APP_ID.png"
+    fi
+    rm -rf "$NFPM_STAGE/usr/share/icons/hicolor"
+    install -Dm644 "$NIGHTLY_ICON" \
+      "$NFPM_STAGE/usr/share/icons/hicolor/256x256/apps/$NIGHTLY_DESK_ID.png"
+  fi
   # nfpm expands env vars in fields like `version` and `arch`, but not in `contents[].src`.
-  sed -e "s|\${STAGE}|$STAGE|g" -e "s|@GLIBC_FLOOR@|${GLIBC_FLOOR:-2.35}|g" "$HERE/nfpm.yaml" >"$WORK/nfpm.yaml"
+  DROP_LIB_TREE=
+  # shellcheck disable=SC2016
+  [[ -d "$NFPM_STAGE/usr/lib" ]] || DROP_LIB_TREE='\|^  - src: \${STAGE}/usr/lib/|,+2d;'
+  # shellcheck disable=SC2016
+  sed "${DROP_LIB_TREE}s|\${STAGE}|$NFPM_STAGE|g;s|\${NFPM_BIN}|$NFPM_BIN|g;s|\${NFPM_CLI}|$NFPM_CLI|g;s|@GLIBC_FLOOR@|${GLIBC_FLOOR:-2.35}|g" "$HERE/nfpm.yaml" >"$WORK/nfpm.yaml"
   for fmt in deb rpm; do
     if has "$fmt"; then (cd "$ROOT" && nfpm package -f "$WORK/nfpm.yaml" -p "$fmt" -t "$DIST/$BASENAME.$fmt"); fi
   done
@@ -110,10 +208,32 @@ fi
 if has appimage; then
   APPDIR="$WORK/AniCraft.AppDir"
   cp -R "$STAGE" "$APPDIR"
-  ln -s usr/bin/anicraft "$APPDIR/AppRun"
-  cp "$HERE/$APP_ID.desktop" "$APPDIR/$APP_ID.desktop"
-  cp "$ROOT/assets/app-icon/hicolor/256x256/apps/$APP_ID.png" "$APPDIR/$APP_ID.png"
-  ln -s "$APP_ID.png" "$APPDIR/.DirIcon"
+  if [[ "$IS_NIGHTLY" = 1 ]]; then
+    APPIMAGE_ID="$APP_ID.nightly-v1"
+    # AppRun is the shared launcher (not a symlink): from $APPDIR it finds usr/bin/anicraft and
+    # starts it with the flavor's protocol and a profile of its own.
+    install -Dm755 "$HERE/nightly-launch.sh" "$APPDIR/AppRun"
+    sed -e "s|^Icon=$APP_ID$|Icon=$APPIMAGE_ID|" \
+        -e "s|^Name=AniCraft$|Name=AniCraft Nightly|" \
+        -e '/^MimeType=/d' \
+        "$APPDIR/usr/share/applications/$APP_ID.desktop" >"$APPDIR/usr/share/applications/$APPIMAGE_ID.desktop"
+    rm -f "$APPDIR/usr/share/applications/$APP_ID.desktop"
+    cp "$APPDIR/usr/share/applications/$APPIMAGE_ID.desktop" "$APPDIR/$APPIMAGE_ID.desktop"
+    NIGHTLY_ICON="$ROOT/assets/app-icon/anicraft-nightly.png"
+    if [[ ! -f "$NIGHTLY_ICON" ]]; then
+      NIGHTLY_ICON="$ROOT/assets/app-icon/hicolor/256x256/apps/$APP_ID.png"
+    fi
+    rm -rf "$APPDIR/usr/share/icons/hicolor"
+    install -Dm644 "$NIGHTLY_ICON" \
+      "$APPDIR/usr/share/icons/hicolor/256x256/apps/$APPIMAGE_ID.png"
+    cp "$NIGHTLY_ICON" "$APPDIR/$APPIMAGE_ID.png"
+    ln -s "$APPIMAGE_ID.png" "$APPDIR/.DirIcon"
+  else
+    ln -s usr/bin/anicraft "$APPDIR/AppRun"
+    cp "$HERE/$APP_ID.desktop" "$APPDIR/$APP_ID.desktop"
+    cp "$ROOT/assets/app-icon/hicolor/256x256/apps/$APP_ID.png" "$APPDIR/$APP_ID.png"
+    ln -s "$APP_ID.png" "$APPDIR/.DirIcon"
+  fi
 
   # Digests from the official GitHub release asset metadata (the same pins as the other Craft apps):
   # https://github.com/AppImage/appimagetool/releases/tag/1.9.1
@@ -156,11 +276,20 @@ if has appimage; then
   # blocks that changed in a newer release, through the .zsync published next to each AppImage.
   # A fork's builds point at its own releases through GITHUB_REPOSITORY.
   REPO="${GITHUB_REPOSITORY:-storytold/AniCraft}"
-  UPDATE_INFO="gh-releases-zsync|${REPO%%/*}|${REPO#*/}|latest|anicraft-*-linux-$ARCH.AppImage.zsync"
+  UPDATE_ARGS=()
+  if [[ "$IS_NIGHTLY" = 0 ]]; then
+    UPDATE_INFO="gh-releases-zsync|${REPO%%/*}|${REPO#*/}|latest|anicraft-*-linux-$ARCH.AppImage.zsync"
+    UPDATE_ARGS=(-u "$UPDATE_INFO")
+  else
+    # Nightly releases are GitHub pre-releases (`latest` only selects stable releases), so point
+    # zsync update metadata at pre-release tags matching `-nightly` rather than stable `latest`.
+    UPDATE_INFO="gh-releases-zsync|${REPO%%/*}|${REPO#*/}|latest-pre|anicraft-*-nightly*-linux-$ARCH.AppImage.zsync"
+    UPDATE_ARGS=(-u "$UPDATE_INFO")
+  fi
   # Extract-and-run: works without FUSE (containers, CI). The output embeds the static runtime,
   # so users don't need libfuse2 either.
   (cd "$DIST" && ARCH="$ARCH" APPIMAGE_EXTRACT_AND_RUN=1 "$TOOL" --no-appstream \
-    --runtime-file "$RUNTIME" -u "$UPDATE_INFO" "$APPDIR" "$OUT")
+    --runtime-file "$RUNTIME" "${UPDATE_ARGS[@]}" "$APPDIR" "$OUT")
   echo "wrote $OUT"
   if [[ -s "$OUT.zsync" ]]; then
     echo "wrote $OUT.zsync"

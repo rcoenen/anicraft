@@ -59,7 +59,7 @@ impl StageNav {
 }
 
 pub fn node_id(layer: LayerId, element: ElementId) -> Id {
-    Id::new(("stage_element", layer.0, element.0))
+    Id::unique(("stage_element", layer.0, element.0))
 }
 
 /// What a path looks like it was drawn with (English, a key): the Rectangle, Oval and PolyStar

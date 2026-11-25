@@ -216,3 +216,18 @@ fn plug_ins_may_edit_guides_but_not_the_view() {
         assert!(plugin_may_call(id).is_err(), "{id}");
     }
 }
+
+#[test]
+fn hiding_edges_keeps_the_selection_and_document_history() {
+    let mut s = rect_session();
+    run(&mut s, "edit.select_all", json!({}));
+    let selected = s.selection.clone();
+    let before = s.doc.clone();
+    let steps = s.history_len();
+    assert!(!selected.is_empty(), "the shape remains selected while its edges are hidden");
+    assert_eq!(run(&mut s, "view.hide_edges", json!({}))["hide_edges"], true);
+    assert_eq!(run(&mut s, "view.aids", json!({}))["hide_edges"], true);
+    assert_eq!(run(&mut s, "view.hide_edges", json!({"on": false}))["hide_edges"], false);
+    assert_eq!((&s.selection, &s.doc), (&selected, &before));
+    assert_eq!(s.history_len(), steps);
+}

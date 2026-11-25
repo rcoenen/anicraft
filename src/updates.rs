@@ -9,6 +9,11 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// A pinned, nightly, or unknown launcher choice must never be replaced by a stable update.
 fn stable_choice() -> Result<(), String> {
+    // The Nightly build's version is the Launcher's alone (`docs/nightly-release-preparation.md`),
+    // so its own updates are off whatever the pins say: it never reads the shared pins store.
+    if !crate::platform::stable_services_allowed() {
+        return Err(tr!("AniCraft Nightly is updated by ArtCraft Launcher. Change its version there.").into());
+    }
     if Pins::load_default().choice(APP.id) == Choice::Stable {
         Ok(())
     } else {
@@ -18,7 +23,7 @@ fn stable_choice() -> Result<(), String> {
 
 /// Whether an update may close the editor without losing pending document work.
 pub(crate) fn safe_to_install(app: &crate::app::App) -> bool {
-    !app.s.is_dirty()
+    !crate::tabs::any_dirty(app)
         && !app.s.in_gesture()
         && !app.playing
         && app.text_edit.is_none()
@@ -413,6 +418,21 @@ mod tests {
         updates.finish();
         updates.apply_outcome(None);
     }
+    #[test]
+    fn unsaved_inactive_documents_prevent_installation() {
+        let ctx = egui::Context::default();
+        let session = anicraft_engine::Session::new(anicraft_engine::doc::sample::demo());
+        let mut app = crate::app::App::with_context(&ctx, session, Some(std::path::PathBuf::from("unused.png")));
+        assert!(safe_to_install(&app));
+
+        assert!(app.run("draw.rect", serde_json::json!({"x": 0, "y": 0, "w": 10, "h": 10})).is_some());
+        assert!(app.perform("file.new", serde_json::json!({})).is_some());
+
+        assert_eq!(app.tabs.len(), 2);
+        assert!(!app.s.is_dirty(), "the active document is clean");
+        assert!(!safe_to_install(&app), "the inactive document has unsaved changes");
+    }
+
     #[test]
     fn uncommitted_stage_text_and_pen_paths_prevent_installation() {
         let ctx = egui::Context::default();

@@ -1,6 +1,6 @@
 # Command reference
 
-Everything you can do in AniCraft is a command: the menus, the shortcuts, the command palette (**Ctrl+K**, macOS **⌘K**), `anicraft-cli` and AI assistants over MCP all run the same 399 commands, listed here by menu. The id is what scripts and [working headless](../working-headless.md) use; the parameters are what a command takes as JSON. Commands that change the document are one undo step each. Your own shortcuts (**Help › Keyboard Shortcuts**) replace the defaults shown here; see the [shortcut reference](shortcuts.md).
+Everything you can do in AniCraft is a command: the menus, the shortcuts, the command palette (**Ctrl+K**, macOS **⌘K**), `anicraft-cli` and AI assistants over MCP all run the same 406 commands, listed here by menu. The id is what scripts and [working headless](../working-headless.md) use; the parameters are what a command takes as JSON. Commands that change the document are one undo step each. Your own shortcuts (**Help › Keyboard Shortcuts**) replace the defaults shown here; see the [shortcut reference](shortcuts.md).
 
 This page is generated from the command registry, so it always matches the version of AniCraft it came with.
 
@@ -21,9 +21,9 @@ This page is generated from the command registry, so it always matches the versi
 - **Save as Template…** `file.save_as_template`
   Parameters: `{folder (the user templates folder), name, category? (default “My Templates”), confirm? (to replace a template of that name)} → {path, thumbnail}: the document as it is, kept as <folder>/<category>/<name>.anicraft with a picture of its first frame; the open document is unchanged`
 - **Export Frame as PNG…** `file.export_png` · File › Export
-  Parameters: `{path, frame? (in the current scene), scale?}`
+  Parameters: `{path, frame? (in the current scene), scale?, background? (default true: the stage colour; false: transparent)}`
 - **Import to Stage…** `file.import` · File › Import · **Ctrl+R** (macOS **⌘R**) · changes the document
-  Parameters: `{path (.svg, .png, .jpg; or a .wav, .ogg or .mp3 sound: onto a new layer at the playhead), x?, y? (top-left on the stage; default: centred), cx?, cy? (centred on that point instead), layer? (new (default) | active: a one-layer drawing goes into the active layer's keyframe at the playhead)}`
+  Parameters: `{path (.svg, .png, .jpg; or a .wav, .ogg or .mp3 sound: onto a new layer at the playhead), x?, y? (top-left on the stage; default: centred), cx?, cy? (centred on that point instead), layer? (new (default) | active: a one-layer drawing goes into the active layer's keyframe at the playhead), match_stage?: false (SVG only: set the stage to the SVG size rounded up to whole pixels, and place it at the origin unless coordinates are given)}`
 - **Export Frame as SVG…** `file.export_svg` · File › Export
   Parameters: `{path, frame? (in the current scene), confirm?}`
 - **Export Video…** `file.export_video` · File › Export
@@ -31,7 +31,7 @@ This page is generated from the command registry, so it always matches the versi
 - **Export Sprite Sheet…** `file.export_sprite_sheet` · File › Export
   Parameters: `{path (.png; the frame map goes beside it as .json), from?, to? (movie frames), scale?, columns?, padding?, background?, confirm?}`
 - **Export PNG Sequence…** `file.export_png_sequence` · File › Export
-  Parameters: `{dir, from?, to? (movie frames: every scene in order), scale?}`
+  Parameters: `{dir, from?, to? (movie frames: every scene in order), scale?, background? (default true: the stage colour; false: transparent)}`
 - **Export SVG Sequence…** `file.export_svg_sequence` · File › Export
   Parameters: `{dir, from?, to? (movie frames: every scene in order), confirm?} → one frame_00001.svg per frame (vectors, gradients and masks kept)`
 - **Export Animated GIF…** `file.export_gif` · File › Export
@@ -100,6 +100,8 @@ This page is generated from the command registry, so it always matches the versi
   Parameters: ``{on?: bool} (default: toggle) dragged points and selections, and the points the Line, Rectangle, Oval, PolyStar and Pen tools draw, snap to points, lines and fill edges (while it is off, the `snap` params of element.translate, raw.move_point and draw.snap only snap to guides, the grid and pixels, as View › Guides, Grid and Snapping say)``
 - **Rulers** `view.rulers` · **Ctrl+Alt+Shift+R** (macOS **⌥⇧⌘R**)
   Parameters: `{on?: bool} (default: toggle) rulers along the stage's top and left edges, in stage pixels from its top-left corner; drag from one to make a guide`
+- **Hide Edges** `view.hide_edges` · **Ctrl+Shift+E** (macOS **⇧⌘E**)
+  Parameters: `{on?: bool} (default: toggle) the stage selection marks: artwork, selection and active tool handles are kept`
 - **Show Grid** `view.grid_show` · View › Grid · **Ctrl+'** (macOS **⌘'**)
   Parameters: `{on?: bool} (default: toggle) the grid on the stage (never in pictures or exports)`
 - **Snap to Grid** `view.grid_snap` · View › Grid · **Ctrl+Shift+'** (macOS **⇧⌘'**)
@@ -236,6 +238,8 @@ This page is generated from the command registry, so it always matches the versi
   Parameters: `{} puts the selected symbol instances' transformation point back at the centre (none kept: tools use the centre of the box, tweens the registration point) → {reset}`
 - **Remove Transform** `modify.remove_transform` · Modify › Transform · **Ctrl+Shift+Z** (macOS **⇧⌘Z**) · changes the document
   Parameters: `{}`
+- **Distribute to Layers** `modify.distribute_to_layers` · Modify › Timeline · **Ctrl+Shift+D** (macOS **⇧⌘D**) · changes the document
+  Parameters: `{} each selected object (symbol instance, group, drawing object, text, bitmap) on the keyframe at the playhead moves to a new layer of its own just above its layer, named after its symbol when it is an instance, for the same frames. Each new layer keeps its layer's settings (camera depth, attachment, the layer it follows). Raw shapes stay where they are; refused for a tweened keyframe or the end of a tween, an instance that goes on from the keyframe before or after, a layer below full opacity, and mask, guide and other special layers → {layers: [new layer ids], left_raw}`
 - **Left** `align.left` · Modify › Align · **Ctrl+Alt+1** (macOS **⌥⌘1**) · changes the document
   Parameters: `{to_stage?}`
 - **Horizontal Center** `align.hcenter` · Modify › Align · **Ctrl+Alt+2** (macOS **⌥⌘2**) · changes the document
@@ -252,6 +256,16 @@ This page is generated from the command registry, so it always matches the versi
   Parameters: `{}`
 - **Distribute Vertical Centers** `align.distribute_v` · Modify › Align · changes the document
   Parameters: `{}`
+- **Match Width** `align.match_width` · Modify › Align · changes the document
+  Parameters: `{to_stage?} sets each selected object's width to the widest one's (to_stage: the stage's width), keeping its height and its left edge; an object with no width (a vertical line) keeps none`
+- **Match Height** `align.match_height` · Modify › Align · changes the document
+  Parameters: `{to_stage?} sets each selected object's height to the tallest one's (to_stage: the stage's height), keeping its width and its top edge; an object with no height (a horizontal line) keeps none`
+- **Match Width and Height** `align.match_size` · Modify › Align · changes the document
+  Parameters: `{to_stage?} sets each selected object's width to the widest one's and its height to the tallest one's, which may be two different objects (to_stage: the stage's width and height), keeping its top-left corner; a side an object has no extent along stays as it is`
+- **Space Evenly Horizontally** `align.space_h` · Modify › Align · changes the document
+  Parameters: `{} moves the selected objects (three or more) so the gaps between them across are equal; the first and last (by their left edges) stay where they are. Refused when the objects overlap too much to keep their order`
+- **Space Evenly Vertically** `align.space_v` · Modify › Align · changes the document
+  Parameters: `{} moves the selected objects (three or more) so the gaps between them down are equal; the first and last (by their top edges) stay where they are. Refused when the objects overlap too much to keep their order`
 - **Bind to Data…** `data.bind` · Modify › Data · changes the document
   Parameters: `{property: x|y|scale_x|scale_y|rotation|alpha|frame (x, y pixels; scales and alpha percent; rotation degrees; frame: the 0-based frame of its symbol a graphic instance shows), table (id or name), column, element? (a symbol instance's id; default the selected one), start? (the span's first frame, 0-based; default the first frame the instance is on), frames? (the span's length; default one frame per row, or with a key column the frames the instance is on), from?, to? (the keys the first and last frame show; default the table's first and last; to before from plays it backwards), interpolation?: linear|step, scale?, offset? (value = column × scale + offset)} one binding per property of an instance; before the span it shows the first frame's value, after it the last's → {element, property, table, column, start, frames, value}`
 - **Remove Data Bindings** `data.unbind` · Modify › Data · changes the document
@@ -289,9 +303,9 @@ This page is generated from the command registry, so it always matches the versi
 ## Control
 
 - **Next Frame** `timeline.next_frame` · **.**
-  Parameters: `{}`
+  Parameters: `{} (on the last frame it stays there)`
 - **Previous Frame** `timeline.prev_frame` · **,**
-  Parameters: `{}`
+  Parameters: `{} (on the first frame it stays there)`
 - **Go to First Frame** `timeline.first_frame` · **Home**
   Parameters: `{}`
 - **Go to Last Frame** `timeline.last_frame` · **End**
@@ -322,7 +336,7 @@ These commands have no menu item: the panels, the stage and the timeline use the
 - **Close Envelope** `modify.envelope_close` · changes the document
   Parameters: `{} closes the open envelope: bent raw shapes merge with the drawing they now touch (as after a move). Nothing to close is no error → {closed}`
 - **Publish Settings** `publish.settings_set` · changes the document
-  Parameters: `{profile? (a whole profile, as publish.settings_get returns it), format? (html | gif | apng | webp | video | lottie | sprite_sheet | png_sequence | png | svg | audio), enabled?, output? (relative to the document's folder; {name} is the document's name), and that format's options: title, sound, fit (html); from, to, scale, loop (gif); from, to, scale, loop (true, false or how many times it plays; 0: forever), background (apng, webp); from, to, scale, audio (video); from, to, background (lottie); from, to, scale, columns, padding, background (sprite_sheet); from, to, scale (png_sequence); frame, scale (png); frame (svg); from, to, rate, bits (audio). from/to/frame are movie frames, null for the movie's ends}`
+  Parameters: `{profile? (a whole profile, as publish.settings_get returns it), format? (html | gif | apng | webp | video | lottie | sprite_sheet | png_sequence | png | svg | audio), enabled?, output? (relative to the document's folder; {name} is the document's name), and that format's options: title, sound, fit (html); from, to, scale, loop (gif); from, to, scale, loop (true, false or how many times it plays; 0: forever), background (apng, webp); from, to, scale, audio (video); from, to, background (lottie); from, to, scale, columns, padding, background (sprite_sheet); from, to, scale, background (png_sequence); frame, scale, background (png); frame (svg); from, to, rate, bits (audio). from/to/frame are movie frames, null for the movie's ends}`
 - **Open Recent** `file.open_recent`
   Parameters: `{index? (in file.recent_list order, from 0) | path?, confirm? (needed over unsaved changes)}: opens it as file.open does; a file that is no longer there stays on the list, marked missing`
 - **Recent Files** `file.recent_list`
@@ -568,7 +582,7 @@ These commands have no menu item: the panels, the stage and the timeline use the
 - **Delete Guide** `view.guide_delete` · changes the document
   Parameters: ``{index} removes this scene's guide `index`; refused while guides are locked``
 - **Rulers, Grid and Guides** `view.aids`
-  Parameters: `{} whether the rulers, grid and guides show and snap, the grid's and guides' settings, and this scene's guides [{axis, at}, ..]`
+  Parameters: `{} whether the rulers, grid and guides show and snap, whether selection edges are hidden, the grid's and guides' settings, and this scene's guides [{axis, at}, ..]`
 - **Combine Objects** `modify.combine` · changes the document
   Parameters: `{op: union|intersect|punch|crop} combines the selected shapes on the active layer, bottom to top as they are stacked (ADR 0073). union: one drawing object of everything (a group of the merged pieces when they have more than one colour or keep lines); intersect: the area every one covers, in the topmost's fill and stroke; punch: the topmost's area cut out of each of the others; crop: each of the others cut to the topmost's area. Punch and crop remove the topmost. A result of one fill (or one line) is a drawing object, one of several is a group of raw shapes → {op, created}`
 - **List Library** `library.items`
@@ -622,7 +636,7 @@ These commands have no menu item: the panels, the stage and the timeline use the
 - **Move Point** `raw.move_point` · changes the document
   Parameters: ``{x, y, to_x, to_y, with?: [[x, y], ..], points?: [[id, cmd], ..], snap?, slop?, merge?: bool} moves the corner or end at (x, y), with every raw shape that shares it, to (to_x, to_y), snapped within `snap` to points, lines and fill edges (while Snap to Objects is on); the anchors at `with` move by as much; returns the points to pass on while a drag goes on``
 - **Select Parts** `raw.select_rect` · changes the document
-  Parameters: `{x0, y0, x1, y1, add?: bool} the marquee, on every visible, unlocked layer: the parts of raw fills and strokes under the rectangle (cut at its edges, per layer) and the objects wholly inside it`
+  Parameters: `{x0, y0, x1, y1, add?: bool} the marquee, on every visible, unlocked layer: the parts of raw fills and strokes under the rectangle (cut at its edges, per layer) and the objects it touches`
 - **Merge Shapes** `raw.merge` · changes the document
   Parameters: `{ids?: [..]} the raw shapes (default: the selection) merge again with the raw shapes they touch, in place`
 - **Selection Tool Target** `raw.hit`

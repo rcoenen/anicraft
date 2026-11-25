@@ -226,6 +226,8 @@ format_settings!(
     PngSequenceSettings, PublishFormat::PngSequence, false, {
         range: FrameRange = FrameRange::default(),
         scale: f32 = 1.0,
+        /// The stage colour behind each frame; off: transparent (#536).
+        background: bool = true,
     }
 );
 format_settings!(
@@ -234,6 +236,8 @@ format_settings!(
         /// The movie frame (0-based, every scene in order).
         frame: u32 = 0,
         scale: f32 = 1.0,
+        /// The stage colour behind it; off: transparent (#536).
+        background: bool = true,
     }
 );
 format_settings!(

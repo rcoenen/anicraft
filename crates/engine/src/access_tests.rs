@@ -173,3 +173,19 @@ fn panic_hunt_every_command_with_roots_set() {
     assert!(said.iter().all(|t| !t.contains(SECRET)), "no result or error holds a refused file's text");
     assert!(snapshot(&out).len() > 3, "the write root was written to");
 }
+
+/// The bounded read (what opens a `.fla`) is checked as the whole-file read is: the read root
+/// only, so what an agent wrote to the write root can't be read back through it.
+#[test]
+fn a_bounded_read_stays_inside_the_read_root() {
+    let (s, roots) = scratch("bounded");
+    for d in ["work", "out", "secret"] {
+        std::fs::write(s.0.join(d).join("old.fla"), [7u8; 16]).unwrap();
+    }
+    let _g = access::confine(roots);
+    assert_eq!(crate::vfs::read_bounded(&s.0.join("work").join("old.fla"), 8).unwrap().len(), 9);
+    for d in ["out", "secret"] {
+        let e = crate::vfs::read_bounded(&s.0.join(d).join("old.fla"), 8).unwrap_err();
+        assert_eq!(e.kind(), std::io::ErrorKind::PermissionDenied, "{d}: {e}");
+    }
+}

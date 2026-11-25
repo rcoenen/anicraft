@@ -47,8 +47,10 @@ exported frames of its kind.
 
 ### Stills and sequences
 
-* **PNG image** and **PNG sequence** have real transparency where the stage has nothing, and
-  can be scaled up to 800 %. The sequence writes `frame_00001.png` and on into its folder.
+* **PNG image** and **PNG sequence** show the stage colour behind the artwork. Turn off
+  **Stage colour as background** in Publish Settings (or pass `background: false`) for real
+  transparency where the stage has nothing. Both can be scaled up to 800 %. The sequence writes
+  `frame_00001.png` and on into its folder.
 * **SVG image** writes one frame as a standalone vector drawing that matches the stage: shapes,
   strokes, gradients, masks (as clip paths), filters (as SVG filters) and blend modes. Bitmaps
   are embedded.
@@ -151,8 +153,8 @@ work. Your choices are saved in the document, and every change can be undone.
 | Video | Frames, Scale, Include sound |
 | Lottie | Frames, Stage colour as background |
 | Sprite sheet | Frames, Scale, Columns, Padding, Stage colour as background |
-| PNG sequence | Frames, Scale |
-| PNG image | Frame (or **Playhead**), Scale |
+| PNG sequence | Frames, Scale, Stage colour as background |
+| PNG image | Frame (or **Playhead**), Scale, Stage colour as background |
 | SVG image | Frame (or **Playhead**) |
 | Audio | Frames, Sample rate, Bit depth |
 

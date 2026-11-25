@@ -104,7 +104,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
     let video = app.s.timeline().layer(d.layer).and_then(|l| l.video.as_deref()).map(|v| (v.path.clone(), !crate::platform::WEB && !std::path::Path::new(&v.path).is_file()));
     let (mut relink, mut remove_video) = (false, false);
     let (mut submit, mut cancel) = (false, false);
-    crate::windows::new(ctx, tr!("Layer Properties")).id(egui::Id::new("layer_props")).collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, -80.0]).show(ctx, |ui| {
+    crate::windows::new(ctx, tr!("Layer Properties")).id(egui::Id::unique("layer_props")).collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, -80.0]).show(ctx, |ui| {
         ui.set_min_width(420.0);
         form_row(ui, FORM_LABEL_DIALOG, tr!("Name"), |ui| {
             let r = ui.add(egui::TextEdit::singleline(&mut d.name).desired_width(f32::INFINITY)).named(tr!("Layer name"));

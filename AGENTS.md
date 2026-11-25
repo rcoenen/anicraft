@@ -74,11 +74,13 @@ crates/plugins  L0  Sandboxed WebAssembly plug-ins: wasmi host, ABI v1, limits (
 crates/audio    L0  WAV, Ogg Vorbis and MP3 decoding, mixing, resampling, peaks (ADR 0020)
 crates/actions  L0  Timeline action IR, button events, frame scripts (ADR 0024)
 crates/guide    L0  docs/guide as a bundled HTML book, with link checks (ADR 0069)
+crates/flamedia L0  Animate's bitmap and sound payloads, shared by xfl and fla
 crates/doc      L1  Document model, easing, timeline evaluation, player, sample scene
 crates/text     L1  System fonts, shaping, line layout into outlines (ADR 0012)
 crates/render   L2  CPU oracle renderer (coverage, paints, strokes, PNG)
 crates/xfl      L2  XFL/FLA import with its own XML and zip readers (ADR 0009)
 crates/svg      L2  SVG import; clips and masks become mask layers
+crates/fla      L2  Legacy Flash 8–CS4 .fla import, its container read by craft-cfb (ADR 0120)
 crates/engine   L3  Session, undo, command registry, .anicraft format
 crates/gpu      L3  wgpu stage renderer, the default (ADR 0019, 0029, 0032)
 crates/cli      L4  anicraft-cli, including serve and mcp

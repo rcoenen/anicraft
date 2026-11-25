@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AniCraft XFL corpus: unknowns. Self-authored from the public description of the format.
+     What a shape may hold that AniCraft has no reading of, and what it must still draw
+     (ADR 0133): a stroke and a fill of kinds that don't exist (`InkStroke` and `PatternFill`
+     are names made up for this file, standing in for whatever a newer version writes), an
+     outline run cut short by a command that doesn't exist (`?`) with a whole run after it,
+     edges that name styles their shape doesn't have, and a fill whose outline lost a side. -->
+<DOMDocument xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://ns.adobe.com/xfl/2008/" width="320" height="180" frameRate="24" backgroundColor="#F4F1EA" currentTimeline="1" xflVersion="2.97">
+  <timelines>
+    <DOMTimeline name="Scene 1">
+      <layers>
+        <DOMLayer name="Lines" color="#4F80FF" current="true" isSelected="true">
+          <frames>
+            <DOMFrame index="0" keyMode="9728">
+              <elements>
+                <DOMShape>
+                  <strokes>
+                    <!-- A kind of stroke nobody defines: drawn solid, 6 px, in its colour. -->
+                    <StrokeStyle index="1">
+                      <InkStroke scaleMode="normal" weight="6" caps="none" taper="0.4">
+                        <fill><SolidColor color="#264653"/></fill>
+                      </InkStroke>
+                    </StrokeStyle>
+                    <StrokeStyle index="2">
+                      <SolidStroke scaleMode="normal" weight="6" caps="none">
+                        <fill><SolidColor color="#E76F51"/></fill>
+                      </SolidStroke>
+                    </StrokeStyle>
+                  </strokes>
+                  <edges>
+                    <Edge strokeStyle="1" edges="!400 600|2800 600"/>
+                    <!-- Two runs. The first is cut short at `?` after (70, 60); the second,
+                         (170, 60) to (290, 60), is whole and must still be drawn. -->
+                    <Edge strokeStyle="2" edges="!400 1200|1400 1200?900 9|2800 1200!3400 1200|5800 1200"/>
+                    <!-- A line in stroke style 9, which this shape doesn't have. -->
+                    <Edge strokeStyle="9" edges="!400 1600|2800 1600"/>
+                  </edges>
+                </DOMShape>
+              </elements>
+            </DOMFrame>
+          </frames>
+        </DOMLayer>
+        <DOMLayer name="Fills" color="#FF4F4F">
+          <frames>
+            <DOMFrame index="0" keyMode="9728">
+              <elements>
+                <DOMShape>
+                  <fills>
+                    <FillStyle index="1"><SolidColor color="#2A9D8F"/></FillStyle>
+                    <!-- A kind of fill nobody defines: nothing says its colour, so it is left out. -->
+                    <FillStyle index="2"><PatternFill tile="dots" spacing="4"/></FillStyle>
+                    <FillStyle index="3"><SolidColor color="#E9C46A"/></FillStyle>
+                  </fills>
+                  <edges>
+                    <!-- A whole square, (20, 100) to (80, 160). -->
+                    <Edge fillStyle1="1" edges="!400 2000|1600 2000|1600 3200|400 3200|400 2000"/>
+                    <!-- The unknown fill's square, (100, 100) to (160, 160). -->
+                    <Edge fillStyle1="2" edges="!2000 2000|3200 2000|3200 3200|2000 3200|2000 2000"/>
+                    <!-- A square missing its left side, (180, 100) to (240, 160): closed straight. -->
+                    <Edge fillStyle1="3" edges="!3600 2000|4800 2000|4800 3200|3600 3200"/>
+                    <!-- A square in fill style 7, which this shape doesn't have. -->
+                    <Edge fillStyle1="7" edges="!5200 2000|6000 2000|6000 3200|5200 3200|5200 2000"/>
+                  </edges>
+                </DOMShape>
+              </elements>
+            </DOMFrame>
+          </frames>
+        </DOMLayer>
+      </layers>
+    </DOMTimeline>
+  </timelines>
+</DOMDocument>

@@ -1,0 +1,76 @@
+{
+  "title": "AniCraft nightly deep-background icons",
+  "author": "@skylartaylor",
+  "license": "MIT OR Apache-2.0",
+  "inputs": {
+    "assets/app-icon/hicolor/16x16/apps/ai.storyteller.anicraft.png": {
+      "sha256": "bfe66259f05e7f0036630d1c42843035e388cfa38c9d98f58fbe6d9679bac7d1"
+    },
+    "assets/app-icon/hicolor/24x24/apps/ai.storyteller.anicraft.png": {
+      "sha256": "c77ef8abd7af110a2c559c054fc3b993fb2f42db6607a66451f6dc0d3211fe4b"
+    },
+    "assets/app-icon/hicolor/32x32/apps/ai.storyteller.anicraft.png": {
+      "sha256": "9376dee658a6bcd5a7954528fe969797123a2b8176259170292ba66ec3a4d032"
+    },
+    "assets/app-icon/hicolor/48x48/apps/ai.storyteller.anicraft.png": {
+      "sha256": "41ed3edaed4a88946bc6fa7796a021eee34bc88bc8813092d767971995d5cd40"
+    },
+    "assets/app-icon/hicolor/64x64/apps/ai.storyteller.anicraft.png": {
+      "sha256": "2c416a39d7a1944d9733c77839b3354741049dbce52791c22bf5faffa7881074"
+    },
+    "assets/app-icon/hicolor/128x128/apps/ai.storyteller.anicraft.png": {
+      "sha256": "e6754980d8a2a4acd429f6e3e3ba5569c4a761a45102a81d7edc0ef35210ce47"
+    },
+    "assets/app-icon/hicolor/256x256/apps/ai.storyteller.anicraft.png": {
+      "sha256": "fccf659e67a5c271a1089b566d95f339af97aa1309b209399c01d1f913e46159"
+    },
+    "assets/app-icon/hicolor/512x512/apps/ai.storyteller.anicraft.png": {
+      "sha256": "4db02045d783e5b6ca5c7747a526ac9f6fc3a525a21fdbae09d81eae8116ddda"
+    },
+    "assets/app-icon/anicraft-padded-1024.png": {
+      "sha256": "0fecc6e74052136de33d88964e26cae3b36adfdc0df2648f0572e02919c28153"
+    }
+  },
+  "method": {
+    "kind": "code-generated derivative of the project-owned icon",
+    "original_palette": {
+      "ink": "#0b0b0c",
+      "paper": "#f2f1ee",
+      "background": "#dac604"
+    },
+    "nightly_background": "#8a7c03",
+    "transform": "Express every pixel as a barycentric mix of the three palette colours (field, paper, ink) and re-render it with only the field changed; alpha (so the Mac padding), paper and ink are unchanged. Each committed native size is recoloured at its own resolution; 20 px and 40 px ICO frames are area-averaged from the 256 px master, and the ICNS slots from the padded Mac 1024 master. No crescent, letter or badge.",
+    "generator_sha256": "546813e47d754f940bf2854a7fdd3eed9db46254cc57a5e57caaa32030696095"
+  },
+  "outputs": {
+    "assets/app-icon/anicraft-nightly.png": "ffeec033901af322ae44f11aa338f2a985a25bd55f9e50ac464f41c1e2ab8a11",
+    "assets/app-icon/anicraft-nightly-1024.png": "c03e1fcbb3fd9f3afb34fc194cdd9daab5968fd48b2069dcbc331d32aed20c1c",
+    "assets/app-icon/anicraft-nightly.ico": "c86bdc3f065e9b5a12fbba9f52e593fd90aeefcfd8e1c3495dfac3831ce69e51",
+    "assets/app-icon/anicraft-nightly.icns": "ab9c90f4505dba082613526c00a96f2b3c011e9487e043a02b8ac0ab2134b27d"
+  },
+  "ico_frame_sizes": [
+    16,
+    20,
+    24,
+    32,
+    40,
+    48,
+    64,
+    128,
+    256
+  ],
+  "icns_png_slots": {
+    "icp4": 16,
+    "icp5": 32,
+    "ic11": 32,
+    "icp6": 64,
+    "ic12": 64,
+    "ic07": 128,
+    "ic08": 256,
+    "ic13": 256,
+    "ic09": 512,
+    "ic14": 512,
+    "ic10": 1024
+  },
+  "validation": "Input and output hashes, PNG header/colour type, ICO entry table and ICNS slot table checked; the field colour is #8a7c03 inside the tile and every source alpha is unchanged. Native Explorer, Finder and iconutil qualification remains for CI and a real Mac."
+}

@@ -9,7 +9,7 @@ use crate::a11y::{self, Named};
 use crate::app::App;
 use crate::icons::{self, Icon};
 use crate::theme::{T, TARGET, Type, color, font, text};
-use egui::{Align2, Rect, Sense, Stroke, StrokeKind, Vec2, WidgetType, pos2, vec2};
+use egui::{Align2, Rect, Sense, Stroke, StrokeKind, Vec2, Role, pos2, vec2};
 use serde_json::json;
 
 /// A New preset: its name (English, translated where drawn), stage width and height.
@@ -101,8 +101,12 @@ fn header(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.add(egui::Image::new((crate::app::app_mark(ctx).id(), vec2(44.0, 44.0))));
         ui.add_space(8.0);
         ui.vertical(|ui| {
-            ui.label(text(Type::Title, "AniCraft")); // i18n-exempt: the product name
-            ui.label(text(Type::Caption, tr!("Version {version} · {stage}", version = env!("CARGO_PKG_VERSION"), stage = crate::i18n::t(crate::app::RELEASE_STAGE))));
+            ui.label(text(Type::Title, crate::platform::name()));
+            if crate::platform::stable_services_allowed() {
+                ui.label(text(Type::Caption, tr!("Version {version} · {stage}", version = env!("ANICRAFT_BUILT_VERSION"), stage = crate::i18n::t(crate::app::RELEASE_STAGE))));
+            } else {
+                ui.label(text(Type::Caption, tr!("Version {version}", version = env!("ANICRAFT_BUILT_VERSION"))));
+            }
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let back = ui.add(egui::Button::new(tr!("Back to the document")).shortcut_text(text(Type::Key, "Esc"))); // i18n-exempt: a key name
@@ -118,7 +122,7 @@ fn tile(ui: &mut egui::Ui, name: &str, w: u32, h: u32) -> egui::Response {
     let size = vec2(118.0, 112.0);
     let (r, resp) = ui.allocate_exact_size(size, Sense::click());
     let size_text = format!("{w} × {h}");
-    a11y::control(ui, &resp, WidgetType::Button, &tr!("New {name}, {size}", name = name, size = size_text), None);
+    a11y::control(ui, &resp, Role::Button, &tr!("New {name}, {size}", name = name, size = size_text), None);
     let p = ui.painter();
     let hot = resp.hovered() || resp.has_focus();
     p.rect_filled(r, T.rc(), if hot { T.hover } else { T.panel_alt });
@@ -216,7 +220,7 @@ fn card(app: &mut App, ui: &mut egui::Ui, ctx: &egui::Context, i: usize, e: &ani
         ui.set_width(thumb.x);
         let (r, resp) = ui.allocate_exact_size(thumb, if missing { Sense::hover() } else { Sense::click() });
         let label = if missing { tr!("{name}, missing", name = name) } else if e.pinned { tr!("Open {name}, pinned", name = name) } else { tr!("Open {name}", name = name) };
-        a11y::control(ui, &resp, WidgetType::Button, &label, None);
+        a11y::control(ui, &resp, Role::Button, &label, None);
         let hot = !missing && (resp.hovered() || resp.has_focus());
         let p = ui.painter();
         p.rect_filled(r, T.rc(), T.panel_alt);

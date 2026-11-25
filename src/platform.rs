@@ -299,11 +299,15 @@ pub fn portable_root_for(os: Os, exe: &Path, appimage: Option<&Path>, is_file: &
 /// Where this copy keeps its data, decided once at start.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Placement {
-    /// The portable data folder, when this copy is portable and the folder can be written.
+    /// The portable data folder, when this copy is portable and the folder can be written; the
+    /// Nightly profile root when this process was launched for one.
     pub portable: Option<PathBuf>,
     /// A portable copy whose data folder can't be written (a read-only disc or share): the
     /// folder and why. The user's settings folder is used instead, and Preferences says so.
     pub unwritable: Option<(PathBuf, String)>,
+    /// The Nightly profile the Launcher selected: every folder below is inside it (portable, so
+    /// [`config_dir_for`] returns it too) and nothing of stable's is read or written.
+    pub profile: Option<PathBuf>,
 }
 
 /// Whether `dir` can be made and written to (a small probe file, removed again).
@@ -321,8 +325,8 @@ fn writable(dir: &Path) -> Result<(), String> {
 pub fn placement_for(root: Option<&Path>, can_write: &dyn Fn(&Path) -> Result<(), String>) -> Placement {
     let Some(data) = root.map(|r| r.join(PORTABLE_DATA)) else { return Placement::default() };
     match can_write(&data) {
-        Ok(()) => Placement { portable: Some(data), unwritable: None },
-        Err(e) => Placement { portable: None, unwritable: Some((data, e)) },
+        Ok(()) => Placement { portable: Some(data), unwritable: None, profile: None },
+        Err(e) => Placement { portable: None, unwritable: Some((data, e)), profile: None },
     }
 }
 
@@ -335,6 +339,12 @@ pub fn placement() -> &'static Placement {
         return Placement::default();
         #[cfg(not(target_arch = "wasm32"))]
         {
+            // A Nightly profile replaces the portable and installed layouts wholesale: its root
+            // was validated before the first folder below was opened (`profile_root`, which also
+            // probed that it is writable), so nothing of stable's is consulted.
+            if let Some(root) = crate::launch_profile::current().root() {
+                return Placement { portable: Some(root.to_path_buf()), unwritable: None, profile: Some(root.to_path_buf()) };
+            }
             let Ok(exe) = std::env::current_exe() else { return Placement::default() };
             let root = portable_root_for(OS, &exe, appimage().as_deref(), &|p| p.is_file());
             placement_for(root.as_deref(), &writable)
@@ -690,13 +700,81 @@ pub fn plugins_dir() -> Option<PathBuf> {
 /// Linux desktop entry, AppStream and MIME package names, the Flatpak id and the macOS bundle id.
 pub const APP_ID: &str = "ai.storyteller.anicraft";
 
+/// The Nightly window identity: the Wayland app_id / X11 class and the Windows AUMID
+/// (`src/process_identity.rs`), so docks, taskbars and window rules keep Nightly apart from
+/// Stable. The package and bundle use `APP_ID_NIGHTLY` instead; they are two different strings.
+pub const APP_ID_NIGHTLY: &str = "ai.storyteller.anicraft.nightly-v1";
+
+/// The package, macOS bundle and Launcher identity of the Nightly flavor. The artifacts carry it
+/// (`packaging/nightly-common.sh`, `packaging/macos/nightly-lib.sh`, `nightly_plist.py`, the
+/// policy), not this binary, so it is kept here only beside the window id: two strings, never one.
+#[allow(dead_code)]
+pub const APP_ID_NIGHTLY_PACKAGE: &str = "ai.storyteller.anicraft.nightly";
+
+/// Which channel this process is: `Stable`, or the Nightly column selected before the window.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LaunchIdentity {
+    Stable,
+    NightlyV1,
+}
+
+static IDENTITY: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// Set once, before the first icon, window or folder is touched.
+pub fn select_identity(identity: LaunchIdentity) -> Result<(), String> {
+    let value = match identity {
+        LaunchIdentity::Stable => 1,
+        LaunchIdentity::NightlyV1 => 2,
+    };
+    IDENTITY
+        .compare_exchange(0, value, std::sync::atomic::Ordering::AcqRel, std::sync::atomic::Ordering::Acquire)
+        .map(|_| ())
+        .map_err(|_| tr!("the window launch identity was already selected").into())
+}
+
+pub fn identity() -> LaunchIdentity {
+    if IDENTITY.load(std::sync::atomic::Ordering::Acquire) == 2 { LaunchIdentity::NightlyV1 } else { LaunchIdentity::Stable }
+}
+
+/// The window's app id for a channel: stable keeps its implicit one where Windows needs it.
+pub const fn app_id_for(identity: LaunchIdentity) -> &'static str {
+    match identity {
+        LaunchIdentity::Stable => APP_ID,
+        LaunchIdentity::NightlyV1 => APP_ID_NIGHTLY,
+    }
+}
+
+pub fn app_id() -> &'static str {
+    app_id_for(identity())
+}
+
+/// The name the window, the About box and the taskbar show. A product name, so it is not
+/// translated (the channel is said in text, never only in the art).
+pub const fn name_for(identity: LaunchIdentity) -> &'static str {
+    match identity {
+        LaunchIdentity::Stable => tr_noop!("AniCraft"),
+        LaunchIdentity::NightlyV1 => tr_noop!("AniCraft Nightly"),
+    }
+}
+
+pub fn name() -> &'static str {
+    name_for(identity())
+}
+
+/// Whether the services that belong to one installed copy may run: the updater, the control
+/// port, the agent link and the applications-menu entry. Nightly has none of them.
+pub fn stable_services_allowed() -> bool {
+    identity() == LaunchIdentity::Stable
+}
+
 /// Main-window chrome. Keep the native title bar on macOS so it cannot cover the egui menu row.
 /// Windows and Linux use their native frames too.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn viewport(b: egui::ViewportBuilder) -> egui::ViewportBuilder {
     // The Wayland app_id / X11 class: docks match it to the installed desktop entry
-    // (packaging/linux/ai.storyteller.anicraft.desktop) for the icon and the launcher.
-    chrome(OS, b.with_app_id(APP_ID).with_icon(app_icon()))
+    // (packaging/linux/ai.storyteller.anicraft.desktop) for the icon and the launcher. Nightly
+    // has its own id, so window rules and docks never group the two.
+    chrome(OS, b.with_app_id(app_id()).with_icon(app_icon()))
 }
 
 /// The window chrome for `os`. The egui menu row is ordinary window content, below the native
@@ -711,7 +789,7 @@ fn chrome(_os: Os, b: egui::ViewportBuilder) -> egui::ViewportBuilder {
 /// it with the editor, and the same icon. Native frames everywhere.
 pub fn secondary_window(b: egui::ViewportBuilder) -> egui::ViewportBuilder {
     #[cfg(not(target_arch = "wasm32"))]
-    return b.with_app_id(APP_ID).with_icon(app_icon());
+    return b.with_app_id(app_id()).with_icon(app_icon());
     #[cfg(target_arch = "wasm32")]
     b
 }
@@ -720,11 +798,19 @@ pub fn secondary_window(b: egui::ViewportBuilder) -> egui::ViewportBuilder {
 /// the tile on Apple's grid (with its transparent margin); elsewhere the full-bleed tile.
 #[cfg(not(target_arch = "wasm32"))]
 fn app_icon() -> egui::IconData {
-    #[cfg(target_os = "macos")]
-    let png: &[u8] = include_bytes!("../assets/app-icon/anicraft-macos-512.png");
-    #[cfg(not(target_os = "macos"))]
-    let png: &[u8] = include_bytes!("../assets/app-icon/hicolor/256x256/apps/ai.storyteller.anicraft.png");
-    eframe::icon_data::from_png_bytes(png).unwrap_or_default()
+    eframe::icon_data::from_png_bytes(icon_png(identity(), OS == Os::Mac)).unwrap_or_default()
+}
+
+/// The icon bytes for a channel and platform: the Nightly tiles keep the artwork and its Mac
+/// padding, with the deeper field (`assets/app-icon/README.md`).
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+fn icon_png(identity: LaunchIdentity, macos: bool) -> &'static [u8] {
+    match (identity, macos) {
+        (LaunchIdentity::NightlyV1, true) => include_bytes!("../assets/app-icon/anicraft-nightly-1024.png"),
+        (LaunchIdentity::NightlyV1, false) => include_bytes!("../assets/app-icon/anicraft-nightly.png"),
+        (LaunchIdentity::Stable, true) => include_bytes!("../assets/app-icon/anicraft-macos-512.png"),
+        (LaunchIdentity::Stable, false) => include_bytes!("../assets/app-icon/hicolor/256x256/apps/ai.storyteller.anicraft.png"),
+    }
 }
 
 /// No extra inset is needed: the menu row sits below the native title bar.
@@ -978,8 +1064,8 @@ pub fn filters(cmd: &str) -> (&'static str, &'static [&'static str]) {
         "file.export_svg" => (tr_noop!("SVG image"), &["svg"]),
         "file.export_lottie" => (tr_noop!("Lottie animation"), &["json"]),
         "file.export_html" => (tr_noop!("Web page"), &["html", "htm"]),
-        "file.import" => (tr_noop!("Drawing, image or sound"), &["svg", "png", "jpg", "jpeg", "wav", "ogg", "mp3"]),
-        "file.import_to_library" => (tr_noop!("Sound, image or drawing"), &["wav", "ogg", "mp3", "png", "jpg", "jpeg", "svg"]),
+        "file.import" => (tr_noop!("Drawing, image or sound"), &["svg", "png", "jpg", "jpeg", "wav", "wave", "ogg", "oga", "mp3"]),
+        "file.import_to_library" => (tr_noop!("Sound, image or drawing"), &["wav", "wave", "ogg", "oga", "mp3", "png", "jpg", "jpeg", "svg"]),
         "file.export_audio" => (tr_noop!("WAV sound"), &["wav"]),
         "file.export_sprite_sheet" => (tr_noop!("PNG sprite sheet"), &["png"]),
         "file.export_video" => (tr_noop!("Video (WebM or MP4)"), &["webm", "mp4"]),
@@ -1259,6 +1345,45 @@ pub fn pointer_feel(ctx: &egui::Context) {
 }
 
 #[cfg(test)]
+mod profile_tests {
+    use super::*;
+
+    /// The package and the window identities are deliberately two different strings: the Launcher
+    /// matches bundles and assets by the first, and docks, taskbars and window rules by the second.
+    #[test]
+    fn the_nightly_package_and_window_identities_are_distinct_and_leave_stable_alone() {
+        assert_eq!(APP_ID, "ai.storyteller.anicraft");
+        assert_eq!(APP_ID_NIGHTLY_PACKAGE, "ai.storyteller.anicraft.nightly");
+        assert_eq!(app_id_for(LaunchIdentity::Stable), APP_ID);
+        assert_eq!(app_id_for(LaunchIdentity::NightlyV1), APP_ID_NIGHTLY);
+        assert_ne!(APP_ID_NIGHTLY, APP_ID);
+        assert_ne!(APP_ID_NIGHTLY_PACKAGE, APP_ID_NIGHTLY);
+        assert!(APP_ID_NIGHTLY_PACKAGE.starts_with(APP_ID));
+        // The names differ too, so a window title or About pane always says the channel.
+        assert_eq!(name_for(LaunchIdentity::Stable), "AniCraft");
+        assert_eq!(name_for(LaunchIdentity::NightlyV1), "AniCraft Nightly");
+        // And the Nightly tiles are different art from stable's.
+        assert_ne!(icon_png(LaunchIdentity::NightlyV1, false), icon_png(LaunchIdentity::Stable, false));
+        assert_ne!(icon_png(LaunchIdentity::NightlyV1, true), icon_png(LaunchIdentity::Stable, true));
+        for identity in [LaunchIdentity::Stable, LaunchIdentity::NightlyV1] {
+            for macos in [false, true] {
+                assert!(eframe::icon_data::from_png_bytes(icon_png(identity, macos)).is_ok(), "{identity:?} {macos}");
+            }
+        }
+    }
+
+    /// A test binary runs its tests in one process, so the process-wide identity is only read
+    /// here (a test that selected Nightly would change what the other tests see).
+    #[test]
+    fn nothing_selects_a_profile_unless_main_does() {
+        assert_eq!(identity(), LaunchIdentity::Stable);
+        assert!(stable_services_allowed());
+        assert_eq!(app_id(), APP_ID);
+        assert_eq!(name(), "AniCraft");
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -1291,6 +1416,20 @@ mod tests {
     fn the_desktop_runs_every_command() {
         assert!(anicraft_engine::commands().iter().all(|c| unavailable(c.id).is_none()));
         assert!(reads_file("file.open") && reads_file("file.import") && !reads_file("file.save"));
+    }
+
+    /// The pickers show a sound exactly when the importer reads it: a name it reads but the
+    /// picker hides (`.wave` and `.oga` were) can't be chosen, and one it shows but can't read
+    /// fails after the choice.
+    #[test]
+    fn import_filters_include_supported_sound_aliases() {
+        for cmd in ["file.import", "file.import_to_library"] {
+            let (_, extensions) = filters(cmd);
+            for ext in ["wav", "wave", "ogg", "oga", "vorbis", "mp3", "aif", "flac", "m4a"] {
+                let read = anicraft_engine::cmds_sound::is_sound(Path::new(&format!("take.{ext}")));
+                assert_eq!(extensions.contains(&ext), read, "{cmd} and .{ext}");
+            }
+        }
     }
 
     #[test]

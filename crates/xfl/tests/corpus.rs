@@ -82,6 +82,18 @@ const REPORTS: &[(&str, &[(&str, usize)])] = &[
     ("text", &[("text fields (no fonts on this computer)", 4)]),
     ("textfields", &[("text fields (no fonts on this computer)", 4)]),
     ("tweens", &[("motion tweens (kept as keyframes)", 1), ("tween spins (turned the shortest way)", 1)]),
+    // ADR 0133: nothing of an outline is dropped without a line here.
+    (
+        "unknowns",
+        &[
+            ("fills in a style their shape doesn't have (left out)", 1),
+            ("fills of a kind AniCraft doesn't know (left out)", 1),
+            ("fills with a gap in their outline (closed straight across)", 1),
+            ("outline parts AniCraft couldn't read (left out)", 1),
+            ("strokes in a style their shape doesn't have (left out)", 1),
+            ("strokes of a kind AniCraft doesn't know (drawn solid)", 1),
+        ],
+    ),
     ("video", &[("instances of videos AniCraft can't play", 1), ("videos (first frame kept as a still)", 1), ("videos AniCraft can't play", 2)]),
 ];
 

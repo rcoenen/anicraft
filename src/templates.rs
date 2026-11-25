@@ -10,7 +10,7 @@ use crate::icons::{self, Icon};
 use crate::theme::{FORM_LABEL_DOCK, T, Type, form_row, text};
 use anicraft_engine::cmds_template::{self, UserTemplate};
 use anicraft_engine::doc::templates::{TEMPLATES, Template};
-use egui::{Align2, Rect, Sense, Stroke, StrokeKind, Vec2, WidgetType, pos2, vec2};
+use egui::{Align2, Rect, Sense, Stroke, StrokeKind, Vec2, Role, pos2, vec2};
 use serde_json::json;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -122,7 +122,7 @@ fn tile(ui: &mut egui::Ui, tex: Option<egui::TextureHandle>, name: &str, note: &
         ui.set_width(THUMB.x);
         ui.spacing_mut().item_spacing.y = 2.0;
         let (r, resp) = ui.allocate_exact_size(THUMB, Sense::click());
-        a11y::control(ui, &resp, WidgetType::Button, &tr!("New from template {name}", name = name), None);
+        a11y::control(ui, &resp, Role::Button, &tr!("New from template {name}", name = name), None);
         let hot = resp.hovered() || resp.has_focus();
         let p = ui.painter();
         p.rect_filled(r, T.rc(), T.panel_alt);
@@ -240,7 +240,7 @@ pub fn save_window(app: &mut App, ctx: &egui::Context) {
         d.picture = Some(picture_png(doc).and_then(|png| texture(ctx, "save-preview", &png)));
     }
     let (mut submit, mut cancel) = (false, false);
-    crate::windows::new(ctx, tr!("Save as Template")).id(egui::Id::new("save_template")).collapsible(false).resizable(false).anchor(Align2::CENTER_CENTER, [0.0, -60.0]).show(ctx, |ui| {
+    crate::windows::new(ctx, tr!("Save as Template")).id(egui::Id::unique("save_template")).collapsible(false).resizable(false).anchor(Align2::CENTER_CENTER, [0.0, -60.0]).show(ctx, |ui| {
         ui.set_min_width(420.0);
         if let Some(Some(tex)) = &d.picture {
             let s = tex.size_vec2();

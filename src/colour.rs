@@ -107,7 +107,7 @@ struct Recent {
 }
 
 fn recent_id() -> Id {
-    Id::new("anicraft.colour.recent")
+    Id::unique("anicraft.colour.recent")
 }
 
 fn remember(ctx: &egui::Context, popup: Id, c: [u8; 3]) {
@@ -138,7 +138,7 @@ struct Dropper {
 }
 
 fn dropper_id() -> Id {
-    Id::new("anicraft.colour.dropper")
+    Id::unique("anicraft.colour.dropper")
 }
 
 fn dropper(ctx: &egui::Context) -> Dropper {
@@ -208,7 +208,7 @@ pub fn button_alpha(ui: &mut egui::Ui, c: &mut [u8; 4]) -> Response {
 fn button_inner(ui: &mut egui::Ui, c: &mut [u8; 4], alpha: bool) -> Response {
     let size = ui.spacing().interact_size;
     let (rect, mut resp) = ui.allocate_exact_size(size, Sense::click());
-    resp.widget_info(|| egui::WidgetInfo::new(egui::WidgetType::ColorButton));
+    resp.widget_info(|| egui::WidgetInfo::new(egui::Role::ColorWell));
     let popup = resp.id.with("colour_popup");
     let open = egui::Popup::is_id_open(ui.ctx(), popup);
     if ui.is_rect_visible(rect) {
@@ -232,10 +232,11 @@ pub fn popup_for(ui: &egui::Ui, anchor: &Response, popup: Id, c: &mut [u8; 4], a
     }
     let mut changed = false;
     let shown = egui::Popup::menu(anchor).id(popup).close_behavior(close_behavior(ui.ctx())).show(|ui| {
-        changed = picker(ui, popup, c, alpha, none);
+        name_popup(ui, tr!("Colour picker"));
+        changed = picker(ui, popup, c, alpha, none, true);
     });
     match shown {
-        Some(r) => name_popup(&r.response, tr!("Colour picker")),
+        Some(_) => {}
         // A tap that reached the stage and closed the popup in one frame still picks.
         None => {
             if let Some(p) = take_picked(ui.ctx(), popup) {
@@ -247,17 +248,27 @@ pub fn popup_for(ui: &egui::Ui, anchor: &Response, popup: Id, c: &mut [u8; 4], a
     changed
 }
 
-/// Names a picker popup for screen readers: a dialog holding the picker's controls.
-pub(crate) fn name_popup(r: &Response, name: &str) {
-    r.ctx.accesskit_node_builder(r.id, |node| {
+/// Names a picker popup for screen readers: a dialog holding the picker's controls. Called
+/// first thing inside the popup, on its own `Ui`: that is the node its controls hang under
+/// (since egui 0.37 the popup's response is another node, with nothing in it).
+pub(crate) fn name_popup(ui: &egui::Ui, name: &str) {
+    // Where the popup was last frame: a container has no place of its own in the tree.
+    let at = ui.ctx().memory(|m| m.area_rect(ui.layer_id().id));
+    let scale = f64::from(ui.ctx().pixels_per_point());
+    ui.ctx().accesskit_node_builder(ui.unique_id(), |node| {
         node.set_role(egui::accesskit::Role::Dialog);
         node.set_label(name);
+        if let Some(r) = at {
+            node.set_bounds(egui::accesskit::Rect { x0: f64::from(r.min.x) * scale, y0: f64::from(r.min.y) * scale, x1: f64::from(r.max.x) * scale, y1: f64::from(r.max.y) * scale });
+        }
     });
 }
 
-/// The picker itself: swatches or mixer, then the colour, its hex and its alpha.
-pub(crate) fn picker(ui: &mut egui::Ui, popup: Id, c: &mut [u8; 4], alpha: bool, none: Option<&mut bool>) -> bool {
-    let view_id = Id::new("anicraft.colour.view");
+/// The picker itself: swatches or mixer, then the colour, its hex and its alpha. With
+/// `close_on_pick`, a click on a swatch is the choice and closes the popup (#570); a picker
+/// that is one part of a larger popup (a gradient's colour stop) stays open instead.
+pub(crate) fn picker(ui: &mut egui::Ui, popup: Id, c: &mut [u8; 4], alpha: bool, none: Option<&mut bool>, close_on_pick: bool) -> bool {
+    let view_id = Id::unique("anicraft.colour.view");
     let mut view: View = ui.data(|d| d.get_temp(view_id)).unwrap_or_default();
     let mut changed = false;
     // The eyedropper: this picker is the one a click on the stage gives its colour to; the
@@ -316,6 +327,9 @@ pub(crate) fn picker(ui: &mut egui::Ui, popup: Id, c: &mut [u8; 4], alpha: bool,
             if let Some(p) = picked {
                 *c = [p[0], p[1], p[2], c[3]];
                 changed = true;
+                if close_on_pick {
+                    egui::Popup::close_all(ui.ctx());
+                }
             }
         }
         View::Mixer => {
@@ -402,7 +416,7 @@ fn view_toggle(ui: &mut egui::Ui, view: View) -> Response {
             }
         }
     }
-    crate::a11y::control(ui, &resp, egui::WidgetType::Button, name, None);
+    crate::a11y::control(ui, &resp, egui::Role::Button, name, None);
     resp.on_hover_text(tip)
 }
 
@@ -510,7 +524,7 @@ fn swatches(ui: &mut egui::Ui, current: [u8; 3]) -> (Option<[u8; 3]>, Option<[u8
         resp.clone().on_hover_text(text(Type::Data, tip));
     }
     // One control for the whole grid (a click picks the cell under the pointer).
-    crate::a11y::control(ui, &resp, egui::WidgetType::Button, if doc.is_empty() { tr!("Colour swatches") } else { tr!("Colour swatches and the document's swatches") }, None);
+    crate::a11y::control(ui, &resp, egui::Role::Button, if doc.is_empty() { tr!("Colour swatches") } else { tr!("Colour swatches and the document's swatches") }, None);
     let over = hovered.and_then(|i| cells.get(i)).map(|(_, c)| *c);
     (if resp.clicked() { resp.interact_pointer_pos().and_then(hit).map(|(_, c)| c) } else { None }, over)
 }
@@ -570,12 +584,12 @@ mod tests {
         let ctx = egui::Context::default();
         ctx.enable_accesskit();
         crate::theme::apply(&ctx);
-        let id = Id::new("fill_popup");
+        let id = Id::unique("fill_popup");
         let mut c = [255, 255, 255, 255];
         let frame = |ctx: &egui::Context, c: &mut [u8; 4], events: Vec<Event>| -> (bool, TreeUpdate) {
             let mut changed = false;
             let input = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(600.0, 500.0))), events, ..Default::default() };
-            let mut out = ctx.run_ui(input, |ui| changed = picker(ui, id, c, false, None));
+            let mut out = ctx.run_ui(input, |ui| changed = picker(ui, id, c, false, None, true));
             out.textures_delta.clear();
             (changed, out.platform_output.accesskit_update.expect("the accessibility tree"))
         };
@@ -622,13 +636,51 @@ mod tests {
         click(&ctx, &mut c, back);
         let (_, t) = frame(&ctx, &mut c, Vec::new());
         assert!(find(&t, "Colour swatches").is_some());
-        ctx.data_mut(|d| d.remove::<View>(Id::new("anicraft.colour.view")));
+        ctx.data_mut(|d| d.remove::<View>(Id::unique("anicraft.colour.view")));
+    }
+
+    /// #570: a swatch clicked in a colour button's picker is the choice: the colour changes and
+    /// the picker closes.
+    #[test]
+    fn a_swatch_picked_closes_the_picker() {
+        use egui::accesskit::TreeUpdate;
+        use egui::{Event, PointerButton, Pos2};
+        let ctx = egui::Context::default();
+        ctx.enable_accesskit();
+        crate::theme::apply(&ctx);
+        let mut c = [255, 255, 255];
+        let frame = |ctx: &egui::Context, c: &mut [u8; 3], events: Vec<Event>| -> (bool, TreeUpdate) {
+            let mut changed = false;
+            let input = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(600.0, 600.0))), events, ..Default::default() };
+            let mut out = ctx.run_ui(input, |ui| changed = button(ui, c).changed());
+            out.textures_delta.clear();
+            (changed, out.platform_output.accesskit_update.expect("the accessibility tree"))
+        };
+        let bounds = |t: &TreeUpdate, label: &str| t.nodes.iter().map(|(_, n)| n).find(|n| n.label() == Some(label)).and_then(|n| n.bounds());
+        let click = |ctx: &egui::Context, c: &mut [u8; 3], at: Pos2| -> bool {
+            let button = |pressed| Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
+            frame(ctx, c, vec![Event::PointerMoved(at)]);
+            frame(ctx, c, vec![button(true)]);
+            let changed = frame(ctx, c, vec![button(false)]).0;
+            changed | frame(ctx, c, Vec::new()).0
+        };
+        let (_, t) = frame(&ctx, &mut c, Vec::new());
+        let swatch = t.nodes.iter().map(|(_, n)| n).find(|n| n.role() == egui::accesskit::Role::ColorWell).and_then(|n| n.bounds()).expect("the colour button");
+        click(&ctx, &mut c, Pos2::new(((swatch.x0 + swatch.x1) * 0.5) as f32, ((swatch.y0 + swatch.y1) * 0.5) as f32));
+        let (_, t) = frame(&ctx, &mut c, Vec::new());
+        let grid = bounds(&t, "Colour swatches").expect("the picker opened");
+        // The first block's top right cell (pure green): the side column, the gap, six cells.
+        let green = Pos2::new(grid.x0 as f32, grid.y0 as f32) + vec2(CELL + CELL * 0.5 + CELL * 5.5, CELL * 0.5);
+        assert!(click(&ctx, &mut c, green), "the colour changed");
+        assert_eq!(c, [0, 255, 0]);
+        let (_, t) = frame(&ctx, &mut c, Vec::new());
+        assert!(bounds(&t, "Colour swatches").is_none(), "the picker closed");
     }
 
     #[test]
     fn recent_colours_keep_one_entry_per_popup_session() {
         let ctx = egui::Context::default();
-        let (a, b) = (Id::new("a"), Id::new("b"));
+        let (a, b) = (Id::unique("a"), Id::unique("b"));
         let list = |ctx: &egui::Context| ctx.data(|d| d.get_temp::<Recent>(recent_id())).map(|r| r.colours).unwrap_or_default();
         // A drag in the mixer: one entry, the last colour.
         for v in [10, 20, 30] {
@@ -651,11 +703,11 @@ mod tests {
     #[test]
     fn a_click_on_the_stage_gives_the_open_picker_its_colour_once() {
         let ctx = egui::Context::default();
-        let (a, b) = (Id::new("fill_popup"), Id::new("stroke_popup"));
+        let (a, b) = (Id::unique("fill_popup"), Id::unique("stroke_popup"));
         let mut c = [10, 20, 30, 128];
         let frame = |ctx: &egui::Context, id: Id, c: &mut [u8; 4]| {
             let mut changed = false;
-            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| changed = picker(ui, id, c, true, None));
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| changed = picker(ui, id, c, true, None, true));
             out.textures_delta.clear();
             changed
         };

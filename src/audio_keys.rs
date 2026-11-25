@@ -407,7 +407,7 @@ fn draw_graph(ui: &mut egui::Ui, d: &Dialog, g: &Graph) -> Option<u32> {
 fn choice(ui: &mut egui::Ui, widget: &str, name: &str, current: u64, list: &[(u64, String)], tip: &str) -> Option<u64> {
     let mut picked = None;
     let shown = list.iter().find(|(id, _)| *id == current).map_or_else(String::new, |(_, n)| n.clone());
-    egui::ComboBox::from_id_salt(egui::Id::new(("audio_keys_choice", widget))).width(theme::fit(ui, 220.0)).selected_text(text(Type::Body, shown)).show_ui(ui, |ui| {
+    egui::ComboBox::from_id_salt(egui::Id::unique(("audio_keys_choice", widget))).width(theme::fit(ui, 220.0)).selected_text(text(Type::Body, shown)).show_ui(ui, |ui| {
         for (id, n) in list {
             if ui.selectable_label(*id == current, text(Type::Body, n.clone())).clicked() && *id != current {
                 picked = Some(*id);
@@ -439,7 +439,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     let mut changed = false;
     let (mut ok, mut cancel) = (false, false);
     let mut retarget = false;
-    let id = egui::Id::new(match d.kind {
+    let id = egui::Id::unique(match d.kind {
         Kind::Keys => "audio_keys",
         Kind::Lips => "lip_sync",
     });

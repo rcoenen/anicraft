@@ -15,7 +15,7 @@ use crate::app::{App, Tool};
 use crate::theme::{T, Type, text};
 use anicraft_engine::brush_library::{BUILTIN, BrushPreset, builtin, builtin_hint};
 use anicraft_engine::geom::pressure::{CURVE_PRESETS, PressureCurve};
-use egui::{Rect, Sense, Stroke, WidgetType, pos2, vec2};
+use egui::{Rect, Sense, Stroke, Role, pos2, vec2};
 use serde_json::json;
 use std::collections::HashMap;
 
@@ -127,7 +127,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     }
     let mut open = true;
     let at = ctx.content_rect().right_top() + vec2(-620.0, 90.0);
-    let shown = crate::windows::new(ctx, tr!("Brush Library")).id(egui::Id::new("brush_library")).open(&mut open).default_pos(at).default_width(300.0).resizable(true).collapsible(false).show(ctx, |ui| panel(app, ui));
+    let shown = crate::windows::new(ctx, tr!("Brush Library")).id(egui::Id::unique("brush_library")).open(&mut open).default_pos(at).default_width(300.0).resizable(true).collapsible(false).show(ctx, |ui| panel(app, ui));
     a11y::name_title_bar(&shown, tr!("Brush Library"));
     app.brush_lib.open &= open;
 }
@@ -188,7 +188,7 @@ fn panel(app: &mut App, ui: &mut egui::Ui) {
             let name_at = pos2(img.right() + 8.0, rect.center().y);
             let color = if selected { T.on_active } else { T.text };
             ui.painter().text(name_at, egui::Align2::LEFT_CENTER, shown, crate::theme::font(Type::Body), color);
-            a11y::control(ui, &resp, WidgetType::SelectableLabel, &tr!("{name} brush", name = shown), Some(selected));
+            a11y::control(ui, &resp, Role::Button, &tr!("{name} brush", name = shown), Some(selected));
             let hint = key.map(|k| crate::i18n::t(builtin_hint(k)).to_string()).unwrap_or_else(|| tr!("Your brush. Right-click to rename, export or delete it.").to_string());
             let resp = resp.on_hover_text(hint);
             if resp.clicked() {
@@ -384,7 +384,7 @@ pub fn props(app: &mut App, ui: &mut egui::Ui, row: impl Fn(&mut egui::Ui, &str,
 /// elsewhere to add one, double-click or right-click a point to remove it.
 pub fn curve_editor(ui: &mut egui::Ui, curve: &mut PressureCurve) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(vec2(CURVE_SIDE, CURVE_SIDE), Sense::click_and_drag());
-    a11y::control(ui, &resp, WidgetType::Button, tr!("Pressure curve"), None);
+    a11y::control(ui, &resp, Role::Button, tr!("Pressure curve"), None);
     let resp = resp.on_hover_text(tr!("Pen pressure (across) to the brush's size or opacity (up). Drag a point to move it, drag elsewhere to add one, double-click a point to remove it"));
     let inner = rect.shrink(5.0);
     let to_screen = |p: [f32; 2]| pos2(inner.left() + p[0] * inner.width(), inner.bottom() - p[1] * inner.height());

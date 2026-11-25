@@ -34,7 +34,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Publish Settings",
             menu: "",
             shortcut: None,
-            params: "{profile? (a whole profile, as publish.settings_get returns it), format? (html | gif | apng | webp | video | lottie | sprite_sheet | png_sequence | png | svg | audio), enabled?, output? (relative to the document's folder; {name} is the document's name), and that format's options: title, sound, fit (html); from, to, scale, loop (gif); from, to, scale, loop (true, false or how many times it plays; 0: forever), background (apng, webp); from, to, scale, audio (video); from, to, background (lottie); from, to, scale, columns, padding, background (sprite_sheet); from, to, scale (png_sequence); frame, scale (png); frame (svg); from, to, rate, bits (audio). from/to/frame are movie frames, null for the movie's ends}",
+            params: "{profile? (a whole profile, as publish.settings_get returns it), format? (html | gif | apng | webp | video | lottie | sprite_sheet | png_sequence | png | svg | audio), enabled?, output? (relative to the document's folder; {name} is the document's name), and that format's options: title, sound, fit (html); from, to, scale, loop (gif); from, to, scale, loop (true, false or how many times it plays; 0: forever), background (apng, webp); from, to, scale, audio (video); from, to, background (lottie); from, to, scale, columns, padding, background (sprite_sheet); from, to, scale, background (png_sequence); frame, scale, background (png); frame (svg); from, to, rate, bits (audio). from/to/frame are movie frames, null for the movie's ends}",
             mutates: true,
             run: settings_set,
         },
@@ -248,6 +248,7 @@ pub fn plan(doc: &Document, path: Option<&Path>, only: Option<&[PublishFormat]>)
                 let q = &prof.png_sequence;
                 let n = range_params(&mut p, q.range, last);
                 p.insert("scale".into(), json!(q.scale));
+                p.insert("background".into(), json!(q.background));
                 ("file.export_png_sequence", n, vec![out])
             }
             PublishFormat::Png => {
@@ -255,6 +256,7 @@ pub fn plan(doc: &Document, path: Option<&Path>, only: Option<&[PublishFormat]>)
                 scene = sc;
                 p.insert("frame".into(), json!(local));
                 p.insert("scale".into(), json!(prof.png.scale));
+                p.insert("background".into(), json!(prof.png.background));
                 ("file.export_png", 1, vec![out])
             }
             PublishFormat::Svg => {
@@ -564,8 +566,8 @@ fn option_keys(f: PublishFormat) -> &'static [&'static str] {
         PublishFormat::Video => &["from", "to", "scale", "audio"],
         PublishFormat::Lottie => &["from", "to", "background"],
         PublishFormat::SpriteSheet => &["from", "to", "scale", "columns", "padding", "background"],
-        PublishFormat::PngSequence => &["from", "to", "scale"],
-        PublishFormat::Png => &["frame", "scale"],
+        PublishFormat::PngSequence => &["from", "to", "scale", "background"],
+        PublishFormat::Png => &["frame", "scale", "background"],
         PublishFormat::Svg => &["frame"],
         PublishFormat::Audio => &["from", "to", "rate", "bits"],
     }
@@ -685,12 +687,14 @@ fn apply(prof: &mut PublishProfile, f: PublishFormat, p: &Value) -> Result<()> {
         PublishFormat::PngSequence => {
             set_range(&mut prof.png_sequence.range, p)?;
             set_scale(&mut prof.png_sequence.scale, p)?;
+            set_bool(&mut prof.png_sequence.background, p, "background")?;
         }
         PublishFormat::Png => {
             if let Some(fr) = opt_u32(p, "frame")? {
                 prof.png.frame = fr.min(crate::MAX_FRAME);
             }
             set_scale(&mut prof.png.scale, p)?;
+            set_bool(&mut prof.png.background, p, "background")?;
         }
         PublishFormat::Svg => {
             if let Some(fr) = opt_u32(p, "frame")? {

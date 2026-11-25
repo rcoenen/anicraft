@@ -14,6 +14,54 @@
 
 use std::path::{Path, PathBuf};
 
+#[path = "src/build_channel.rs"]
+mod build_channel;
+
+/// The release channel: `<APP>_BUILD_CHANNEL=nightly-v1` compiles the Nightly flavour in, and
+/// `<APP>_VERSION` must then carry the exact prepared feed identity (`X.Y.Z-nightly.<date>.<run>.
+/// <attempt>.g<sha12>`). Unset, empty or `stable` is a stable build; anything else is an error.
+/// Returns whether this is Nightly and the version the binary reports.
+fn build_channel() -> (bool, String) {
+    println!("cargo:rerun-if-env-changed=ANICRAFT_BUILD_CHANNEL");
+    println!("cargo:rerun-if-env-changed=ANICRAFT_VERSION");
+    println!("cargo:rerun-if-env-changed=ANICRAFT_BUILD_SHA");
+    println!("cargo:rustc-check-cfg=cfg(anicraft_nightly_v1)");
+    let nightly = match std::env::var("ANICRAFT_BUILD_CHANNEL").as_deref() {
+        Ok("nightly-v1") => {
+            println!("cargo:rustc-cfg=anicraft_nightly_v1");
+            true
+        }
+        // An empty value (an unset CI input) means the default stable build.
+        Ok("stable" | "") | Err(std::env::VarError::NotPresent) => false,
+        _ => {
+            eprintln!("error: unsupported ANICRAFT_BUILD_CHANNEL (expected stable or nightly-v1)");
+            std::process::exit(1);
+        }
+    };
+    let built_version = if nightly {
+        match std::env::var("ANICRAFT_VERSION") {
+            Ok(version) if build_channel::is_nightly_version(&version) => version,
+            _ => {
+                eprintln!("error: nightly-v1 requires an explicit ANICRAFT_VERSION feed identity");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        std::env::var("CARGO_PKG_VERSION").unwrap_or_default()
+    };
+    let sha = std::env::var("ANICRAFT_BUILD_SHA").unwrap_or_default();
+    if nightly {
+        let exact = sha.len() == 40 && sha.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+        if !exact || !built_version.ends_with(&format!(".g{sha:.12}")) {
+            eprintln!("error: nightly-v1 requires ANICRAFT_BUILD_SHA, the 40-hex commit the version names");
+            std::process::exit(1);
+        }
+    }
+    println!("cargo:rustc-env=ANICRAFT_BUILD_SHA={sha}");
+    println!("cargo:rustc-env=ANICRAFT_BUILT_VERSION={built_version}");
+    (nightly, built_version)
+}
+
 /// Files we look for, and the generated constant each fills.
 const FONTS: [(&str, &str); 4] = [
     ("Inter-Regular.ttf", "UI_FONT"),
@@ -74,16 +122,24 @@ fn fail(message: &str) -> ! {
     std::process::exit(1);
 }
 
-/// Windows only: embed the app icon into `anicraft.exe` (taskbar, Start menu, Explorer, Alt-Tab).
+/// Windows only: embed the app icon and version resource into `anicraft.exe` (taskbar, Start
+/// menu, Explorer, Alt-Tab). The Nightly build gets its own icon, `ProductName` "AniCraft
+/// Nightly" and its exact feed version as `ProductVersion`, which the ArtCraft Launcher checks.
 /// A missing resource compiler is a warning, so a cross-compile still links, unless
-/// `ANICRAFT_REQUIRE_WINRES=1` (packaging/windows/package.ps1).
-fn windows_icon() {
+/// `ANICRAFT_REQUIRE_WINRES=1` (packaging/windows/package.ps1, the Nightly producer).
+fn windows_icon(nightly: bool, built_version: &str) {
     println!("cargo:rerun-if-changed=assets/app-icon/anicraft.ico");
+    println!("cargo:rerun-if-changed=assets/app-icon/anicraft-nightly.ico");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;
     }
     let mut res = winresource::WindowsResource::new();
-    res.set_icon("assets/app-icon/anicraft.ico").set("ProductName", "AniCraft").set("FileDescription", "AniCraft 2D vector animation studio");
+    res.set_icon(build_channel::windows_icon_path(nightly))
+        .set("ProductName", if nightly { "AniCraft Nightly" } else { "AniCraft" })
+        .set("FileDescription", if nightly { "AniCraft Nightly animation studio" } else { "AniCraft 2D vector animation studio" });
+    if nightly {
+        res.set("ProductVersion", built_version);
+    }
     if let Err(e) = res.compile() {
         if required("ANICRAFT_REQUIRE_WINRES") {
             fail(&format!("ANICRAFT_REQUIRE_WINRES=1 but anicraft.exe's icon and version resource could not be embedded: {e}"));
@@ -108,7 +164,8 @@ fn native_features() {
 
 fn main() {
     native_features();
-    windows_icon();
+    let (nightly, built_version) = build_channel();
+    windows_icon(nightly, &built_version);
     println!("cargo:rerun-if-env-changed=CRAFT_FONTS_DIR");
     println!("cargo:rerun-if-changed=build.rs");
     let dir = discover();

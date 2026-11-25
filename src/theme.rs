@@ -1132,7 +1132,7 @@ pub const FORM_LABEL_DOCK: f32 = 78.0;
 /// controls' width beside the label is remembered per row, so the choice holds steady while the
 /// panel is resized; a change of choice redraws the frame at once.
 pub fn form_row<R>(ui: &mut egui::Ui, label_w: f32, label: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
-    let id = ui.id().with(("form_row", label));
+    let id = ui.scope_id().with(("form_row", label));
     let avail = ui.available_width();
     let gap = ui.spacing().item_spacing.x;
     let need: Option<f32> = ui.data(|d| d.get_temp(id));
@@ -1200,7 +1200,7 @@ pub fn section_with_header<R>(ui: &mut egui::Ui, id: &str, style: Section, title
         ui.data_mut(|d| d.insert_temp(key, open));
     }
     let enabled = ui.is_enabled();
-    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::CollapsingHeader, enabled, open, title));
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::DisclosureTriangle, enabled, open, title));
     let p = ui.painter();
     let hot = resp.hovered() || resp.has_focus();
     match style {

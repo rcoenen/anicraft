@@ -14,7 +14,7 @@ use crate::app::App;
 use crate::icons::{self, Icon};
 use crate::theme::{T, TARGET, Type, text, to_color32};
 use anicraft_engine::doc::{ElementKind, Paint, Rgba, SwatchPaint, ramp_at};
-use egui::{Id, Key, Painter, Rect, Response, Sense, Stroke, StrokeKind, WidgetType, pos2, vec2};
+use egui::{Id, Key, Painter, Rect, Response, Sense, Stroke, StrokeKind, Role, pos2, vec2};
 use serde_json::json;
 
 /// One swatch, in points, and the gap between swatches.
@@ -160,7 +160,7 @@ fn bar_button(ui: &mut egui::Ui, tip: &str, icon: Icon, enabled: bool) -> Respon
         T.icon
     };
     icons::paint(ui.painter(), Rect::from_center_size(rect.center(), vec2(16.0, 16.0)), icon, colour);
-    a11y::control(ui, &resp, WidgetType::Button, tip, None);
+    a11y::control(ui, &resp, Role::Button, tip, None);
     resp.on_hover_text(tip)
 }
 
@@ -195,7 +195,7 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
         }
         ui.add_space(6.0);
         let more = bar_button(ui, tr!("Swatch options: import, export, defaults"), Icon::Ellipsis, true);
-        egui::Popup::menu(&more).id(Id::new("anicraft.swatches.menu")).show(|ui| menu(app, ui));
+        egui::Popup::menu(&more).id(Id::unique("anicraft.swatches.menu")).show(|ui| menu(app, ui));
     });
     let caption = if n == 0 { tr!("No swatches. Add the current colour with +, or load the defaults from the menu.") } else { tr!("Click to apply; drag to move; right-click for more.") };
     ui.label(text(Type::Caption, caption));
@@ -248,22 +248,25 @@ fn grid(app: &mut App, ui: &mut egui::Ui) {
     let size = vec2(cols as f32 * (CELL + GAP) - GAP, rows as f32 * (CELL + GAP) - GAP);
     let (area, _) = ui.allocate_exact_size(size, Sense::hover());
     let cell_rect = |i: usize| Rect::from_min_size(pos2(area.left() + (i % cols) as f32 * (CELL + GAP), area.top() + (i / cols) as f32 * (CELL + GAP)), vec2(CELL, CELL));
-    let drag_id = Id::new("anicraft.swatches.drag");
+    let drag_id = Id::unique("anicraft.swatches.drag");
     let mut dragging: Option<usize> = ui.data(|d| d.get_temp(drag_id));
-    let pointer = ui.ctx().pointer_interact_pos();
-    // Where a dragged swatch would land: the cell under the pointer (the last one past the end).
-    let drop_at = |p: egui::Pos2| -> usize {
+    let drop_area = area.intersect(ui.clip_rect());
+    // Inside the visible grid, unused cells in the last row map to the last swatch.
+    let drop_at = |p: egui::Pos2| -> Option<usize> {
+        if !drop_area.contains(p) {
+            return None;
+        }
         let col = (((p.x - area.left()) / (CELL + GAP)).floor().max(0.0) as usize).min(cols - 1);
         let row = ((p.y - area.top()) / (CELL + GAP)).floor().max(0.0) as usize;
-        (row * cols + col).min(n.saturating_sub(1))
+        Some((row * cols + col).min(n.saturating_sub(1)))
     };
     let mut act: Option<Act> = None;
     for (i, sw) in swatches.iter().enumerate() {
         let r = cell_rect(i);
-        let resp = ui.interact(r, Id::new(("anicraft.swatch", i)), Sense::click_and_drag());
+        let resp = ui.interact(r, Id::unique(("anicraft.swatch", i)), Sense::click_and_drag());
         let name = describe(&sw.paint, &sw.name);
         let selected = app.swatch_sel == Some(i);
-        a11y::control(ui, &resp, WidgetType::Button, &tr!("Swatch {n}: {name}", n = i + 1, name = name.as_str()), Some(selected));
+        a11y::control(ui, &resp, Role::Button, &tr!("Swatch {n}: {name}", n = i + 1, name = name.as_str()), Some(selected));
         let p = ui.painter();
         preview(p, r, &sw.paint);
         let edge = if selected {
@@ -294,7 +297,14 @@ fn grid(app: &mut App, ui: &mut egui::Ui) {
             app.swatch_sel = Some(i);
         }
         if resp.drag_stopped() && dragging == Some(i) {
-            if let Some(to) = pointer.map(drop_at)
+            // Use the first primary release that ends this drag. The pointer can move again this frame.
+            let released_at = ui.input(|input| {
+                input.events.iter().find_map(|event| match event {
+                    egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: false, .. } => Some(*pos),
+                    _ => None,
+                })
+            });
+            if let Some(to) = released_at.and_then(drop_at)
                 && to != i
             {
                 act = Some(Act::Move(i, to));
@@ -339,15 +349,13 @@ fn grid(app: &mut App, ui: &mut egui::Ui) {
         });
     }
     // The drop mark while a swatch is dragged: a bar on the side it would land.
-    if let (Some(from), Some(at)) = (dragging, pointer)
+    if let (Some(from), Some(to)) = (dragging, ui.ctx().pointer_interact_pos().and_then(drop_at))
         && ui.ctx().dragged_id().is_some()
+        && to != from
     {
-        let to = drop_at(at);
-        if to != from {
-            let r = cell_rect(to);
-            let x = if to > from { r.right() + GAP * 0.5 } else { r.left() - GAP * 0.5 };
-            ui.painter().line_segment([pos2(x, r.top() - 2.0), pos2(x, r.bottom() + 2.0)], Stroke::new(2.0, T.accent));
-        }
+        let r = cell_rect(to);
+        let x = if to > from { r.right() + GAP * 0.5 } else { r.left() - GAP * 0.5 };
+        ui.painter().line_segment([pos2(x, r.top() - 2.0), pos2(x, r.bottom() + 2.0)], Stroke::new(2.0, T.accent));
     } else if ui.ctx().dragged_id().is_none() {
         dragging = None;
     }
@@ -377,7 +385,7 @@ fn grid(app: &mut App, ui: &mut egui::Ui) {
 
 /// The swatch's name, typed in its right-click menu (Enter or leaving the field renames it).
 fn name_field(app: &mut App, ui: &mut egui::Ui, i: usize, current: &str) {
-    let buf_id = Id::new(("anicraft.swatch.name", i));
+    let buf_id = Id::unique(("anicraft.swatch.name", i));
     let mut s: String = ui.data(|d| d.get_temp(buf_id)).unwrap_or_else(|| current.to_string());
     ui.horizontal(|ui| {
         ui.label(tr!("Name"));
@@ -396,12 +404,12 @@ fn name_field(app: &mut App, ui: &mut egui::Ui, i: usize, current: &str) {
 /// The document's swatches as the colour pickers show them (ADR 0078): the solid colours, and
 /// the gradients for the fill picker. Put in the context each frame by the app.
 pub fn publish_to_pickers(ctx: &egui::Context, app: &App) {
-    ctx.data_mut(|d| d.insert_temp(Id::new("anicraft.colour.document"), app.s.doc.swatches.clone()));
+    ctx.data_mut(|d| d.insert_temp(Id::unique("anicraft.colour.document"), app.s.doc.swatches.clone()));
 }
 
 /// The document's swatches, for a picker.
 pub fn for_pickers(ctx: &egui::Context) -> std::sync::Arc<Vec<anicraft_engine::doc::Swatch>> {
-    ctx.data(|d| d.get_temp(Id::new("anicraft.colour.document"))).unwrap_or_default()
+    ctx.data(|d| d.get_temp(Id::unique("anicraft.colour.document"))).unwrap_or_default()
 }
 
 /// The fill a gradient swatch makes, as `paint.set_fill` params.
@@ -429,6 +437,36 @@ mod tests {
             let mut out = ctx.run_ui(screen.clone(), |ui| app.frame(ui));
             out.textures_delta.clear();
         }
+    }
+
+    #[test]
+    fn dropping_outside_the_swatch_grid_keeps_the_order() {
+        let ctx = egui::Context::default();
+        let mut app = App::with_context(&ctx, anicraft_engine::Session::default(), Some(PathBuf::from("unused.png")));
+        let before = app.s.doc.swatches.clone();
+        let frame = |app: &mut App, events| {
+            let input = egui::RawInput { screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(800.0, 800.0))), events, ..Default::default() };
+            ctx.run_ui(input, |ui| grid(app, ui)).textures_delta.clear();
+        };
+        let press =
+            |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
+        let drag = |app: &mut App, from, to, next| {
+            frame(app, vec![egui::Event::PointerMoved(from)]);
+            frame(app, vec![press(from, true)]);
+            frame(app, vec![egui::Event::PointerMoved(to)]);
+            frame(app, vec![press(to, false), next]);
+            frame(app, vec![]);
+        };
+        frame(&mut app, vec![]);
+        frame(&mut app, vec![]);
+        let center = |i: usize| ctx.read_response(Id::unique(("anicraft.swatch", i))).unwrap().rect.center();
+        let start = center(1);
+        let end = center(before.len() - 1);
+        let outside = pos2(start.x, end.y + 3.0 * (CELL + GAP));
+        drag(&mut app, start, outside, egui::Event::PointerMoved(end));
+        assert_eq!(app.s.doc.swatches, before);
+        drag(&mut app, start, end, egui::Event::PointerGone);
+        assert_eq!(app.s.doc.swatches.last(), before.get(1));
     }
 
     #[test]

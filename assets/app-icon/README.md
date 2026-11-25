@@ -34,6 +34,11 @@ canonical artwork. Licence: see `LICENSE.txt`.
 | `hicolor/<size>/apps/ai.storyteller.anicraft.png` | Linux theme icons, 16 to 512 px; the 256 one is also the runtime icon on Windows and Linux, the 128 one the mark in Help › About (`src/app.rs`) | Linux packaging, the Crafting Apps tables |
 | `hicolor/scalable/apps/ai.storyteller.anicraft.svg` | Linux scalable icon | as above |
 | `trace.py` | traces the 2000 px source drawing into the master SVG | regenerating the vectors |
+| `anicraft-nightly.png` | the Nightly tile, 256 px, deeper field | Windows and Linux runtime and taskbar icon (`src/platform.rs`) |
+| `anicraft-nightly-1024.png` | the Nightly tile on Apple's margin, 1024 px | macOS Dock icon of AniCraft Nightly |
+| `anicraft-nightly.ico` | Windows Nightly icon, 16 to 256 px | `build.rs` (`AniCraft Nightly.exe` resources) |
+| `anicraft-nightly.icns` | macOS Nightly bundle icon | `packaging/macos/nightly.sh` |
+| `nightly-provenance.json` | input and output hashes, the palette recipe, the container members | the Nightly art's record |
 
 ## How it reaches each OS
 
@@ -51,3 +56,21 @@ python trace.py rabbit.webp small.svg 1000 4 1960 && npx svgo@3.3.2 -p 1 small.s
 # Every render (needs resvg on PATH and Python with Pillow):
 scripts/icons.sh
 ```
+
+## Nightly channel
+
+The Nightly derivatives keep the foreground artwork, alpha and Mac padding unchanged. Only the
+background contribution changes, from the stable yellow (`#dac604`) to the deeper gold
+(`#8a7c03`); every pixel is unmixed into field, paper and ink and re-rendered with the new field,
+so line work and antialiasing stay sharp. There is no letter badge or crescent: the window title,
+About and the Launcher also name the channel.
+
+`anicraft-nightly.png` and the nine-frame ICO use the existing native sizes, each recoloured at
+its own resolution (the 20 and 40 px frames are averaged down from the 256 px master, which the
+theme folder has no render of). `anicraft-nightly-1024.png` and the eleven-slot ICNS come from the
+real padded Mac 1024 master, not an upscale. The stable files are never recoloured.
+
+`nightly-provenance.json` records the input and output hashes, the palette recipe, the generator's
+hash and the container members. The generator is not committed: it writes all four files from the
+committed masters in one pass (`python3 anicraft-nightly-icons.py <repo>`), and re-running it on
+unchanged inputs reproduces the recorded hashes byte for byte.

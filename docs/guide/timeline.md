@@ -84,6 +84,12 @@ Animate: one click hides, locks or outlines them all, and the next click brings 
 When only some layers are hidden (or locked, or outlined), the first click makes them all alike.
 The camera layer is left alone.
 
+To work on one layer without the others' rows in the way, click the **View only the active
+layer** button beside the **Layers** heading (the one after the parenting view's): the timeline
+shows the active layer's row alone, following you as you pick another layer (with the arrow
+keys or the stage). The other layers stay on the stage, and their settings are untouched.
+Click the button again to see every row.
+
 To give the frames more room, drag the line between the layer names and the frames to the left
 (or to the right for long layer names). Double-click the line to put it back. AniCraft remembers
 the width.

@@ -15,7 +15,7 @@ use crate::app::App;
 use crate::theme::{self, FORM_LABEL_DOCK, Section, T, Type, color, font, form_row, text, with_type};
 use anicraft_engine::doc::data::{MAX_SPAN, MAX_VALUE};
 use anicraft_engine::doc::{Binding, BoundProperty, DataId, DataTable, ElementId, ElementKind, Interp, LibraryItem, SymbolKind};
-use egui::{Align2, Rect, Sense, Stroke, StrokeKind, WidgetType, pos2, vec2};
+use egui::{Align2, Rect, Sense, Stroke, StrokeKind, Role, pos2, vec2};
 use serde_json::{Value, json};
 
 /// The engine's English for what the section lists, for the catalogs: translated where drawn.
@@ -82,7 +82,7 @@ fn key_combo(app: &mut App, ui: &mut egui::Ui, id: DataId, place: &str) {
     let Some((key, names)) = app.s.doc.data_table(id).map(|t| (t.key.clone(), t.columns.iter().map(|c| c.name.clone()).collect::<Vec<_>>())) else { return };
     let shown = key.clone().unwrap_or_else(|| tr!("Row number").to_string());
     let mut pick: Option<Option<String>> = None;
-    egui::ComboBox::from_id_salt(egui::Id::new("data_key").with(place))
+    egui::ComboBox::from_id_salt(egui::Id::unique("data_key").with(place))
         .width(theme::fit(ui, 150.0))
         .selected_text(text(Type::Body, shown))
         .show_ui(ui, |ui| {
@@ -139,7 +139,7 @@ fn grid(ui: &mut egui::Ui, t: &DataTable) {
     let size = vec2(NUMBER_W + cols as f32 * CELL_W, (rows + 1) as f32 * ROW_H);
     egui::ScrollArea::both().id_salt("data_grid").auto_shrink([false, false]).show_viewport(ui, |ui, view| {
         let (rect, resp) = ui.allocate_exact_size(size, Sense::hover());
-        a11y::control(ui, &resp, WidgetType::Label, &tr!("{name}: {detail}", name = t.name, detail = table_detail(t)), None);
+        a11y::control(ui, &resp, Role::Label, &tr!("{name}: {detail}", name = t.name, detail = table_detail(t)), None);
         let p = ui.painter_at(ui.clip_rect());
         let o = rect.min;
         let (top, left) = (o.y + view.min.y, o.x + view.min.x);
@@ -188,7 +188,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     };
     let mut open = true;
     let at = crate::windows::work_area(ctx).center() - vec2(280.0, 220.0);
-    let shown = crate::windows::new(ctx, tr!("Data Table")).id(egui::Id::new("data_table_view")).open(&mut open).default_pos(at).default_size([560.0, 400.0]).min_width(320.0).resizable(true).collapsible(false).show(ctx, |ui| {
+    let shown = crate::windows::new(ctx, tr!("Data Table")).id(egui::Id::unique("data_table_view")).open(&mut open).default_pos(at).default_size([560.0, 400.0]).min_width(320.0).resizable(true).collapsible(false).show(ctx, |ui| {
         ui.horizontal_wrapped(|ui| {
             ui.label(text(Type::Heading, t.name.as_str()));
             ui.label(text(Type::Caption, table_detail(&t)));

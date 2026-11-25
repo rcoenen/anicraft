@@ -213,15 +213,15 @@ pub fn buttons(app: &mut App, ui: &mut egui::Ui) {
         toggle_edit_multiple(app);
     }
     let (rect, resp) = ui.allocate_exact_size(vec2(16.0, crate::theme::TARGET), Sense::click());
-    let hot = resp.hovered() || egui::Popup::is_id_open(ui.ctx(), egui::Id::new(MENU_ID));
+    let hot = resp.hovered() || egui::Popup::is_id_open(ui.ctx(), egui::Id::unique(MENU_ID));
     ui.painter().rect_filled(rect, T.rc(), if hot { T.header } else { Color32::TRANSPARENT });
     crate::icons::paint(ui.painter(), Rect::from_center_size(rect.center(), vec2(12.0, 12.0)), crate::icons::Icon::ChevronDown, if hot { T.icon_hot } else { T.icon });
-    crate::a11y::control(ui, &resp, egui::WidgetType::Button, tr!("Onion skin options"), None);
+    crate::a11y::control(ui, &resp, egui::Role::Button, tr!("Onion skin options"), None);
     let resp = resp.on_hover_text(tr!("Onion skin options: markers, outlines, colours"));
     if std::mem::take(&mut app.onion_ui.open_menu) {
-        egui::Popup::open_id(ui.ctx(), egui::Id::new(MENU_ID));
+        egui::Popup::open_id(ui.ctx(), egui::Id::unique(MENU_ID));
     }
-    let shown = egui::Popup::menu(&resp).id(egui::Id::new(MENU_ID)).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
+    let shown = egui::Popup::menu(&resp).id(egui::Id::unique(MENU_ID)).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
         ui.set_min_width(230.0);
         menu(app, ui);
     });
@@ -273,7 +273,7 @@ pub fn ruler(app: &mut App, ui: &mut egui::Ui, ruler: Rect, cell_w: f32, x_of: i
             painter.circle_filled(pos2(x + serif * 0.6, ruler.center().y), 2.0, c);
         }
         let hit = Rect::from_center_size(pos2(x, ruler.center().y), vec2(10.0, ruler.height()));
-        let id = ui.id().with(("onion_marker", start));
+        let id = ui.scope_id().with(("onion_marker", start));
         let resp = ui.interact(hit, id, crate::a11y::pointer_only());
         let at = if start { first } else { last };
         let name = if start { tr!("Onion start marker") } else { tr!("Onion end marker") };
@@ -483,7 +483,7 @@ pub fn enabled(app: &App, id: &str) -> Option<bool> {
     let sel = !app.onion_ui.sel.is_empty();
     match id {
         "edit.delete" | "edit.cut" | "edit.copy" => Some(sel),
-        "edit.duplicate" | "modify.convert_to_symbol" | "modify.break_apart" | "arrange.bring_to_front" | "arrange.send_to_back" | "align.distribute_h" | "align.distribute_v" => Some(false),
+        "edit.duplicate" | "modify.convert_to_symbol" | "modify.break_apart" | "arrange.bring_to_front" | "arrange.send_to_back" | "align.distribute_h" | "align.distribute_v" | "align.space_h" | "align.space_v" | "align.match_width" | "align.match_height" | "align.match_size" => Some(false),
         _ => None,
     }
 }
@@ -594,30 +594,32 @@ pub fn nudge(app: &mut App, d: Vec2) {
 /// Boxes around the selection on every keyframe (and the artwork under the pointer), and the
 /// marquee being dragged.
 pub fn draw(app: &mut App, painter: &egui::Painter, to_screen: impl Fn(Vec2) -> Pos2, hover: Option<Pos2>, zoom: f32) {
-    let sel = live_selection(app);
-    let shown = items(app);
-    let box_of = |b: &GRect| Rect::from_min_max(to_screen(b.min), to_screen(b.max)).expand(1.0);
-    if let Some(h) = hover
-        && app.drag == Drag::None
-    {
-        let (first, last) = range(app);
-        if let Some(it) = app.s.multi_frame_pick(first, last, Vec2::new(h.x, h.y), 3.0 / zoom.max(1e-3))
-            && !sel.contains(&it)
-            && let Some((_, b)) = shown.iter().find(|(s, _)| *s == it)
+    if !app.s.aids.hide_edges {
+        let sel = live_selection(app);
+        let shown = items(app);
+        let box_of = |b: &GRect| Rect::from_min_max(to_screen(b.min), to_screen(b.max)).expand(1.0);
+        if let Some(h) = hover
+            && app.drag == Drag::None
         {
-            painter.rect_stroke(box_of(b), 0.0, Stroke::new(1.0, T.selection.gamma_multiply(0.55)), StrokeKind::Middle);
+            let (first, last) = range(app);
+            if let Some(it) = app.s.multi_frame_pick(first, last, Vec2::new(h.x, h.y), 3.0 / zoom.max(1e-3))
+                && !sel.contains(&it)
+                && let Some((_, b)) = shown.iter().find(|(s, _)| *s == it)
+            {
+                painter.rect_stroke(box_of(b), 0.0, Stroke::new(1.0, T.selection.gamma_multiply(0.55)), StrokeKind::Middle);
+            }
         }
-    }
-    for (it, b) in shown.iter().filter(|(it, _)| sel.contains(it)) {
-        if b.is_empty() {
-            continue;
+        for (it, b) in shown.iter().filter(|(it, _)| sel.contains(it)) {
+            if b.is_empty() {
+                continue;
+            }
+            let r = box_of(b);
+            // The playhead's keyframe in the selection colour; the others a step lighter, so it is
+            // clear which artwork is on this frame.
+            let here = app.s.timeline().layer(it.layer).and_then(|l| l.keyframe_at(app.s.frame)).is_some_and(|k| k.start == it.frame);
+            let c = if here { T.selection } else { T.selection.gamma_multiply(0.7) };
+            painter.rect_stroke(r, 0.0, Stroke::new(if here { 1.5 } else { 1.0 }, c), StrokeKind::Middle);
         }
-        let r = box_of(b);
-        // The playhead's keyframe in the selection colour; the others a step lighter, so it is
-        // clear which artwork is on this frame.
-        let here = app.s.timeline().layer(it.layer).and_then(|l| l.keyframe_at(app.s.frame)).is_some_and(|k| k.start == it.frame);
-        let c = if here { T.selection } else { T.selection.gamma_multiply(0.7) };
-        painter.rect_stroke(r, 0.0, Stroke::new(if here { 1.5 } else { 1.0 }, c), StrokeKind::Middle);
     }
     if let Drag::MultiMarquee { start, cur } = app.drag {
         let r = Rect::from_two_pos(to_screen(Vec2::new(start.x, start.y)), to_screen(Vec2::new(cur.x, cur.y)));

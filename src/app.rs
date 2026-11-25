@@ -188,7 +188,10 @@ pub struct TextEditing {
 
 /// Stage camera.
 pub struct StageView {
+    /// Egui points per stage pixel. Zoom controls display device pixels instead.
     pub zoom: f32,
+    /// The effective display scale at which this document’s zoom and pan were measured.
+    pub pixels_per_point: Option<f32>,
     pub pan: egui::Vec2,
     pub fit: bool,
     /// The canvas size and zoom of the last fit: while the view is still as fitted, it fits
@@ -197,6 +200,24 @@ pub struct StageView {
     /// View › Clip Content Outside the Stage (#251): hide artwork on the pasteboard (it is still
     /// there, and still exported only where it is on the stage). Off: it shows, as in Animate.
     pub clip_to_stage: bool,
+}
+
+impl StageView {
+    pub fn clamp_zoom(zoom: f32, pixels_per_point: f32) -> f32 {
+        (zoom * pixels_per_point).clamp(0.05, 64.0) / pixels_per_point
+    }
+
+    fn sync_display_scale(&mut self, pixels_per_point: f32) {
+        let Some(previous) = self.pixels_per_point.replace(pixels_per_point).filter(|&previous| previous != pixels_per_point) else { return };
+        if self.fit || self.fitted.is_some_and(|(_, zoom)| zoom == self.zoom && self.pan == egui::Vec2::ZERO) {
+            self.fit = true;
+        } else {
+            let ratio = previous / pixels_per_point;
+            self.zoom *= ratio;
+            self.pan *= ratio;
+            self.fitted = None;
+        }
+    }
 }
 
 /// In-progress pointer gesture on the stage.
@@ -321,6 +342,8 @@ pub struct Shot {
     pub path: PathBuf,
     pub frames: u32,
     pub requested: bool,
+    /// Where the renderer hands the picture back, once it has read the pixels.
+    pub image: Option<std::sync::mpsc::Receiver<std::sync::Arc<egui::ColorImage>>>,
     /// Scaled down to this width when written (`--shot-width`).
     pub width: Option<u32>,
 }
@@ -424,6 +447,8 @@ pub struct App {
     pub tl_last_layer: Option<anicraft_engine::doc::LayerId>,
     /// Folders shown closed on the timeline (view state: not saved, not undoable).
     pub tl_collapsed: HashSet<anicraft_engine::doc::LayerId>,
+    /// The timeline shows only the active layer's row (#529; view state).
+    pub tl_only_active: bool,
     pub library_sel: Option<LibraryItem>,
     /// The Library panel's folders, selection, sorting, search and preview (ADR 0050).
     pub library: crate::library::LibraryView,
@@ -684,6 +709,11 @@ pub struct App {
     pub templates: crate::templates::Templates,
     /// Saved commands (ADR 0097): the folder's list, the History panel's picks, their windows.
     pub macros: crate::macros_ui::Macros,
+    /// Runs once when the window closes, inside `on_exit`: on macOS every quit ends the process
+    /// inside AppKit's terminate, so code after `run_native` never runs there (the Nightly
+    /// session record is finished here; `src/nightly_session.rs`).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub at_exit: Option<Box<dyn FnOnce()>>,
 }
 
 /// How often (seconds) the system's contrast and light or dark setting are asked again (ADR 0064).
@@ -796,7 +826,7 @@ impl App {
             remote: None,
             s: session,
             tool: Tool::Select,
-            view: StageView { zoom: 1.0, pan: egui::Vec2::ZERO, fit: true, fitted: None, clip_to_stage: false },
+            view: StageView { zoom: 1.0, pixels_per_point: None, pan: egui::Vec2::ZERO, fit: true, fitted: None, clip_to_stage: false },
             stage_cache: stage::Cache::default(),
             drag: Drag::None,
             hint_menu: None,
@@ -828,7 +858,7 @@ impl App {
             show_about: false,
             show_files: false,
             show_licenses: false,
-            shot: shot.map(|path| Shot { path, frames: 0, requested: false, width: None }),
+            shot: shot.map(|path| Shot { path, frames: 0, requested: false, image: None, width: None }),
             cursor_stage: None,
             tl_scroll: 0.0,
             tl_cell_w: timeline::CELL_DEFAULT,
@@ -836,6 +866,7 @@ impl App {
             tl_vscroll: 0.0,
             tl_last_layer: None,
             tl_collapsed: HashSet::new(),
+            tl_only_active: false,
             library_sel,
             library: Default::default(),
             text_edit: None,
@@ -969,6 +1000,8 @@ impl App {
             thumbs: Default::default(),
             templates: Default::default(),
             macros: Default::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            at_exit: None,
         };
         // Your themes (ADR 0117), before the look is first applied. Tests and screenshot runs
         // read no folder of the computer's unless one is named.
@@ -1062,6 +1095,9 @@ impl App {
             Ok(v) => {
                 if matches!(id, "edit.copy" | "edit.cut" | "timeline.copy_frames" | "timeline.cut_frames" | "frames.copy" | "frames.cut") {
                     self.copied = true;
+                }
+                if id == "view.hide_edges" {
+                    self.status_ok(if self.s.aids.hide_edges { tr!("Selection edges hidden") } else { tr!("Selection edges shown") });
                 }
                 Some(v)
             }
@@ -4102,14 +4138,25 @@ impl App {
         size * 0.5 - self.view.pan / self.view.zoom.max(1e-3)
     }
 
-    pub fn zoom_about(&mut self, canvas: egui::Rect, screen: egui::Pos2, new_zoom: f32) {
-        let new_zoom = new_zoom.clamp(0.05, 64.0);
+    pub fn zoom_by(&mut self, canvas: egui::Rect, screen: egui::Pos2, factor: f32, pixels_per_point: f32) {
+        let zoom = self.view.zoom * factor;
+        // A fitted view can sit below the manual limit. Zooming out must never enlarge it.
+        if factor < 1.0 && StageView::clamp_zoom(zoom, pixels_per_point) > self.view.zoom {
+            return;
+        }
+        self.zoom_about(canvas, screen, zoom, pixels_per_point);
+    }
+
+    pub fn zoom_about(&mut self, canvas: egui::Rect, screen: egui::Pos2, new_zoom: f32, pixels_per_point: f32) {
+        let new_zoom = StageView::clamp_zoom(new_zoom, pixels_per_point);
         let size = egui::vec2(self.s.doc.stage.width as f32, self.s.doc.stage.height as f32);
         let origin = canvas.center() + self.view.pan - size * self.view.zoom * 0.5;
         let stage_pt = (screen - origin) / self.view.zoom;
         let new_origin = screen - stage_pt * new_zoom;
         self.view.pan = new_origin - canvas.center() + size * new_zoom * 0.5;
         self.view.zoom = new_zoom;
+        self.view.fit = false;
+        self.view.fitted = None;
     }
 
     pub fn toggle_play(&mut self) {
@@ -4479,12 +4526,7 @@ impl App {
         let Some(shot) = &mut self.shot else { return };
         shot.frames += 1;
         ctx.request_repaint();
-        let image = ctx.input(|i| {
-            i.raw.events.iter().find_map(|e| match e {
-                egui::Event::Screenshot { image, .. } => Some(image.clone()),
-                _ => None,
-            })
-        });
+        let image = shot.image.as_ref().and_then(|r| r.try_recv().ok());
         if let Some(img) = image {
             let img = match shot.width {
                 Some(w) => shrink(&img, w as usize),
@@ -4499,7 +4541,14 @@ impl App {
         }
         if shot.frames >= SHOT_FRAMES && !shot.requested {
             shot.requested = true;
-            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
+            let (send, receive) = std::sync::mpsc::channel();
+            shot.image = Some(receive);
+            let wake = ctx.clone();
+            ctx.request_screenshot(move |img| {
+                // The app may have closed meanwhile: then nobody waits for the picture.
+                let _ = send.send(img);
+                wake.request_repaint();
+            });
         }
         if shot.frames > SHOT_FRAMES + 600 {
             eprintln!("screenshot: the renderer never delivered a frame");
@@ -4520,7 +4569,7 @@ impl App {
         let mut submit = false;
         let mut cancel = false;
         let title = crate::i18n::t(p.title);
-        crate::windows::new(ctx, title).id(egui::Id::new(("prompt", p.title))).collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, -80.0]).show(ctx, |ui| {
+        crate::windows::new(ctx, title).id(egui::Id::unique(("prompt", p.title))).collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, -80.0]).show(ctx, |ui| {
             ui.set_min_width(360.0);
             let r = ui.add(egui::TextEdit::singleline(&mut p.text).desired_width(f32::INFINITY)).named(title);
             if p.focus {
@@ -4557,16 +4606,25 @@ impl App {
 
     fn about_window(&mut self, ctx: &egui::Context) {
         let mut open = self.show_about;
-        let shown = crate::windows::new(ctx, tr!("About AniCraft")).id(egui::Id::new("about_window")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
+        let nightly = !crate::platform::stable_services_allowed();
+        let title = if nightly { tr!("About AniCraft Nightly") } else { tr!("About AniCraft") };
+        let shown = crate::windows::new(ctx, title).id(egui::Id::unique("about_window")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
             ui.add(egui::Image::new((app_mark(ctx).id(), egui::vec2(64.0, 64.0))));
-            ui.heading("AniCraft");
-            ui.label(tr!("Version {version} · {stage}", version = env!("CARGO_PKG_VERSION"), stage = crate::i18n::t(RELEASE_STAGE)));
+            ui.heading(crate::platform::name());
+            if nightly {
+                ui.label(tr!("Version {version}", version = env!("ANICRAFT_BUILT_VERSION")));
+                let commit = env!("ANICRAFT_BUILD_SHA");
+                ui.label(tr!("Built from commit {commit}", commit = &commit[..12.min(commit.len())]));
+                ui.label(tr!("This preview build is managed by ArtCraft Launcher; its updates come from there."));
+            } else {
+                ui.label(tr!("Version {version} · {stage}", version = env!("ANICRAFT_BUILT_VERSION"), stage = crate::i18n::t(RELEASE_STAGE)));
+            }
             ui.label(tr!("Open-source 2D vector animation studio, written in Rust."));
             ui.label(trn!("{n} engine command — all available headless via anicraft-cli.", "{n} engine commands — all available headless via anicraft-cli.", commands().len()));
             ui.colored_label(T.text_dim, "MIT OR Apache-2.0"); // i18n-exempt: licence identifiers
             ui.label(theme::text(theme::Type::Caption, tr!("Typefaces: {fonts}", fonts = theme::font_summary())));
         });
-        crate::a11y::name_title_bar(&shown, tr!("About AniCraft"));
+        crate::a11y::name_title_bar(&shown, title);
         self.show_about = open;
     }
 
@@ -4589,7 +4647,7 @@ impl App {
             (tr!("Screenshots"), root.join("shots")),
         ];
         let mut opened: Option<Result<(), String>> = None;
-        let shown = crate::windows::new(ctx, tr!("Project Files")).id(egui::Id::new("files_window")).open(&mut open).collapsible(false).resizable(false).default_width(620.0).show(ctx, |ui| {
+        let shown = crate::windows::new(ctx, tr!("Project Files")).id(egui::Id::unique("files_window")).open(&mut open).collapsible(false).resizable(false).default_width(620.0).show(ctx, |ui| {
             ui.label(theme::text(theme::Type::Label, tr!("Where AniCraft's documents and files are on this computer")));
             ui.add_space(4.0);
             egui::Grid::new("files").num_columns(3).spacing([10.0, 6.0]).striped(true).show(ui, |ui| {
@@ -4623,7 +4681,7 @@ impl App {
 /// first use and kept in the context. 128 px stays sharp at 64 pt on a 2× display.
 pub(crate) fn app_mark(ctx: &egui::Context) -> egui::TextureHandle {
     const PNG: &[u8] = include_bytes!("../assets/app-icon/hicolor/128x128/apps/ai.storyteller.anicraft.png");
-    let id = egui::Id::new("anicraft-app-mark");
+    let id = egui::Id::unique("anicraft-app-mark");
     if let Some(tex) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
         return tex;
     }
@@ -4746,7 +4804,7 @@ impl eframe::App for App {
             _ => {
                 let over = at - egui::vec2(0.0, 120.0);
                 raw.events.push(egui::Event::PointerMoved(over));
-                raw.events.push(egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: egui::vec2(0.0, -2000.0), modifiers: Modifiers::NONE, phase: egui::TouchPhase::Move });
+                raw.events.push(egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: egui::vec2(0.0, -2000.0), modifiers: Modifiers::NONE, phase: egui::TouchPhase::Move, source: egui::MouseWheelSource::Wheel });
                 self.shot_click.set(None);
                 self.shot_step = 0;
             }
@@ -4766,9 +4824,17 @@ impl eframe::App for App {
         let clean = self.allow_close || self.shot.is_some();
         crate::tabs::finish_all(self, clean);
         #[cfg(not(target_arch = "wasm32"))]
-        self.updates.finish();
+        if crate::platform::stable_services_allowed() {
+            self.updates.finish();
+        }
         #[cfg(not(target_arch = "wasm32"))]
         crate::remote::finish(self);
+        // Last, and once: macOS has no code path after `run_native`, so a clean quit is finished
+        // here. Elsewhere `main`'s return path calls the same hook, which by then is a no-op.
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(hook) = self.at_exit.take() {
+            hook();
+        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
@@ -4865,6 +4931,7 @@ impl App {
             platform::set_mac_glyphs(ok);
             self.glyph_check = false;
         }
+        self.view.sync_display_scale(ctx.pixels_per_point());
         self.press_scripted_key(&ctx);
         // The colour pickers show the document's swatches (ADR 0078).
         crate::swatches_panel::publish_to_pickers(&ctx, self);
@@ -4917,6 +4984,8 @@ impl App {
         let bar = |fill| egui::Frame::NONE.fill(fill).inner_margin(egui::Margin::symmetric(8, 2));
         // The open documents' tabs, above the edit bar of the one shown (ADR 0112).
         egui::Panel::top("document_tabs").exact_size(crate::tabs::BAR_HEIGHT).frame(egui::Frame::NONE.fill(T.chrome)).show(ui, |ui| crate::tabs::bar(self, ui));
+        // A tab opened here may last have been shown on a display with a different scale.
+        self.view.sync_display_scale(ui.ctx().pixels_per_point());
         egui::Panel::top("edit_bar").exact_size(theme::TARGET + 8.0).frame(bar(T.panel)).show(ui, |ui| panels::edit_bar(self, ui));
         egui::Panel::bottom("status_bar").exact_size(28.0).frame(bar(T.chrome)).show(ui, |ui| panels::status_bar(self, ui));
         crate::dock_ui::workspace(self, ui);

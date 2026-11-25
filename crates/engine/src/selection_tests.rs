@@ -658,3 +658,22 @@ fn break_apart_twice_on_text_ends_in_raw_shapes() {
     let err = s.execute("modify.break_apart", &json!({})).unwrap_err().to_string();
     assert!(err.contains("raw shapes already"), "{err}");
 }
+
+/// #522: a marquee that touches part of a symbol instance or a group selects it whole, as it
+/// does a drawing object; one it misses stays unselected.
+#[test]
+fn a_marquee_takes_the_instances_and_groups_it_touches() {
+    let mut s = Session::default();
+    run(&mut s, "draw.ellipse", json!({"x": 0, "y": 0, "w": 100, "h": 100, "stroke": null, "object": true}));
+    run(&mut s, "modify.convert_to_symbol", json!({"name": "Dot"}));
+    run(&mut s, "edit.deselect", json!({}));
+    run(&mut s, "draw.rect", json!({"x": 200, "y": 0, "w": 100, "h": 100, "stroke": null, "object": true}));
+    run(&mut s, "modify.group", json!({}));
+    run(&mut s, "edit.deselect", json!({}));
+    run(&mut s, "draw.rect", json!({"x": 400, "y": 0, "w": 100, "h": 100, "stroke": null, "object": true}));
+    run(&mut s, "edit.deselect", json!({}));
+    // Across the lower halves of the first two only.
+    run(&mut s, "raw.select_rect", json!({"x0": -10, "y0": 50, "x1": 350, "y1": 150}));
+    let kinds: Vec<&'static str> = s.selected_elements().iter().map(|(_, e)| match e.kind { ElementKind::Symbol { .. } => "symbol", ElementKind::Group { .. } => "group", _ => "other" }).collect();
+    assert!(kinds.contains(&"symbol") && kinds.contains(&"group") && kinds.len() == 2, "{kinds:?}");
+}

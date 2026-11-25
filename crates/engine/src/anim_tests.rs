@@ -495,3 +495,34 @@ fn shared_apng_container_preserves_exact_wire_bytes() {
     assert!(apng_file(3, 2, 0, &[]).is_err());
     assert!(apng_file(3, 2, 0, &[(&second, (1, 1))]).is_err());
 }
+
+/// #536: Export Frame as PNG and Export PNG Sequence keep the stage colour by default, and
+/// with `background: false` write real alpha: the empty stage is clear and the artwork opaque.
+#[test]
+fn png_frames_export_transparent_when_asked() {
+    let dir = tmp("png-alpha");
+    let mut s = Session::default();
+    run(&mut s, "draw.rect", json!({"x": 100, "y": 100, "w": 200, "h": 200, "fill": "#ff0000", "stroke": null}));
+    // (corner pixel's alpha, the rectangle's middle pixel's alpha), at scale 0.5.
+    let alphas = |bytes: &[u8]| {
+        let px = anicraft_doc::decode_png(bytes).expect("a PNG");
+        let a = |x: u32, y: u32| px.rgba[((y * px.width + x) * 4 + 3) as usize];
+        (a(1, 1), a(100, 100))
+    };
+    for background in [true, false] {
+        let path = dir.join(format!("frame-{background}.png"));
+        run(&mut s, "file.export_png", json!({"path": path.display().to_string(), "scale": 0.5, "background": background}));
+        let (corner, art) = alphas(&std::fs::read(&path).unwrap());
+        assert_eq!(art, 255, "the artwork is opaque either way");
+        assert_eq!(corner, if background { 255 } else { 0 }, "the empty stage: the stage colour, or clear");
+        let seq = dir.join(format!("seq-{background}"));
+        run(&mut s, "file.export_png_sequence", json!({"dir": seq.display().to_string(), "scale": 0.5, "background": background}));
+        let (corner, _) = alphas(&std::fs::read(seq.join("frame_00001.png")).unwrap());
+        assert_eq!(corner, if background { 255 } else { 0 }, "the sequence too");
+    }
+    // Left out, it is the stage colour, as before.
+    let path = dir.join("frame-default.png");
+    run(&mut s, "file.export_png", json!({"path": path.display().to_string(), "scale": 0.5}));
+    assert_eq!(alphas(&std::fs::read(&path).unwrap()).0, 255);
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -8,7 +8,7 @@ People who have contributed to AniCraft. The repository starts from one initial 
 * lienatanael-dev: the live control port and its MCP bridge (#216).
 * mypenc: skew in Free Transform (#176).
 * Davit Matchakhelidze (devius): Georgian in the interface, with Noto Sans Georgian (#160).
-* Mex (MMexicann): SVG path data, `Math.round` and `Math.min`/`max` signed zeros, affine inverses, documentation; preset files with a byte-order mark, oversized indices, CLI numbers, guide anchors and the Windows build scripts; the Movie Explorer's height (#513) and the layer count clear of the header buttons (#523).
+* Mex (MMexicann): SVG path data, `Math.round` and `Math.min`/`max` signed zeros, affine inverses, documentation; preset files with a byte-order mark, oversized indices, CLI numbers, guide anchors and the Windows build scripts; the Movie Explorer's height (#513) and the layer count clear of the header buttons (#523); command-line options that say when they are wrong, a frame clipboard that survives a failed cut, folders that take no frames, scenes deleted without losing your place, swatches dropped outside the grid, updates that wait for every tab, sound file names in the pickers, backslashes in macOS file names and the download and headless pages (#539 to #556).
 * NetterSilver (Silvertree2010): shape tweens that morph a raw shape's line with its fill, dash patterns, colour, easing and script-string parsing; an XFL nested-group regression test; eight-point ovals, smooth anchors that stay smooth when a segment is bent, and non-finite numbers in transforms, paths, scripts and saved files.
 * Mex (MMexicann): SVG path data, `Math.round` and `Math.min`/`max` signed zeros, affine inverses, documentation.
 * NetterSilver (Silvertree2010): shape tweens that morph a raw shape's line with its fill, dash patterns, colour, easing and script-string parsing; an XFL nested-group regression test; Trace Bitmap and Convert to Bitmap (#489).
@@ -31,7 +31,12 @@ People who have contributed to AniCraft. The repository starts from one initial 
 * Dylan M. Taylor (dylanmtaylor): no caller-chosen ffmpeg over serve and MCP, bounded request lines, safer XFL folder reads.
 * Agapenor (Agapenordev): XFL folder paths with backslashes, the frame limit on loaded documents, the report behind the evaluation allowance and what it counts as work (#13).
 * rcoenen: Animate's shape hints (`morphHintsList`), default text line spacing and default dash gap, from files Animate saved.
+* rcoenen: opening Flash 8 to CS4 binary `.fla` files, with their dashed and dotted strokes, and Animate's own bitmap and sound data (#478, #481).
 * Hagai Baram (hrb9): the Hebrew fallback face, `iw` read as Hebrew, and right-to-left language detection (#486).
 * SoldierPePe: text that mixes directions and letters from a fallback face (#39, #40).
 * Hagai Baram (hrb9): the Hebrew fallback face, `iw` read as Hebrew, and right-to-left language detection, private-use tags included (#486).
 * FredApps: a test that linked artwork survives SVG export and re-import (#500).
+* Ayberk A. (AyberkA0): View Only the Active Layer, frame stepping that stops at the ends, a press that selects at once, an empty cell that selects, transparent PNG frames, the marquee that takes what it touches, Distribute to Layers, Match Size and Space Evenly, filter cards that fold, raw shapes moved from Properties, To Stage inside a symbol, aligning by outlines, and a swatch that closes the picker (#572 to #584).
+* ViktorBystrov72: stage zoom measured in device pixels, Hide Edges, and fitting the stage to an imported SVG (#590, #588, #587).
+* Neel Patel (N-NeelPatel): Convert Lines to Fills in a shape's properties (#562).
+* rcoenen: an imported Animate file that keeps its name, and the macOS crash on closing the window, with the move to egui 0.37 (#596, #594).

@@ -81,6 +81,7 @@ This page is generated from the editor's shortcut map, so it always matches the 
 |---|---|---|
 | Snapping › Snap to Objects | Ctrl+Shift+/, Ctrl+Shift+? | ⇧⌘/, ⇧⌘? |
 | Rulers | Ctrl+Alt+Shift+R | ⌥⇧⌘R |
+| Hide Edges | Ctrl+Shift+E | ⇧⌘E |
 | Grid › Show Grid | Ctrl+' | ⌘' |
 | Grid › Snap to Grid | Ctrl+Shift+' | ⇧⌘' |
 | Grid › Edit Grid… | Ctrl+Alt+G | ⌥⌘G |
@@ -146,6 +147,7 @@ This page is generated from the editor's shortcut map, so it always matches the 
 | Transform › Rotate 90° CW | Ctrl+Shift+9 | ⇧⌘9 |
 | Transform › Rotate 90° CCW | Ctrl+Shift+7 | ⇧⌘7 |
 | Transform › Remove Transform | Ctrl+Shift+Z | ⇧⌘Z |
+| Timeline › Distribute to Layers | Ctrl+Shift+D | ⇧⌘D |
 | Align › Left | Ctrl+Alt+1 | ⌥⌘1 |
 | Align › Horizontal Center | Ctrl+Alt+2 | ⌥⌘2 |
 | Align › Right | Ctrl+Alt+3 | ⌥⌘3 |

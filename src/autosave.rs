@@ -406,7 +406,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
     let btn = egui::vec2(96.0, crate::theme::TARGET + 4.0);
     let title = tr!("Recover unsaved work");
     let shown = crate::windows::new(ctx, title)
-        .id(egui::Id::new("recover_window"))
+        .id(egui::Id::unique("recover_window"))
         .open(&mut open)
         .collapsible(false)
         .resizable(false)

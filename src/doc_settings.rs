@@ -53,7 +53,7 @@ pub fn params(d: &DocSettings) -> serde_json::Value {
 pub fn window(app: &mut App, ctx: &egui::Context) {
     let Some(d) = &mut app.doc_settings else { return };
     let (mut submit, mut cancel) = (false, false);
-    crate::windows::new(ctx, tr!("Document Settings")).id(egui::Id::new("doc_settings")).collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, -80.0]).show(ctx, |ui| {
+    crate::windows::new(ctx, tr!("Document Settings")).id(egui::Id::unique("doc_settings")).collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, -80.0]).show(ctx, |ui| {
         ui.set_min_width(340.0);
         let entered = |ui: &egui::Ui, r: &egui::Response| r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
         form_row(ui, FORM_LABEL_DIALOG, tr!("Stage size"), |ui| {

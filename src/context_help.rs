@@ -336,11 +336,11 @@ pub fn offer(app: &mut App, ctx: &egui::Context, subject: Subject) {
 
 /// The dialog drawn on `layer`, if it is one of ours.
 fn dialog_on(layer: egui::LayerId) -> Option<Dialog> {
-    Dialog::ALL.into_iter().find(|d| d.window_id().is_some_and(|w| layer.id == egui::Id::new(w)))
+    Dialog::ALL.into_iter().find(|d| d.window_id().is_some_and(|w| layer.id == egui::Id::unique(w)))
 }
 
 fn visible(ctx: &egui::Context, d: Dialog) -> bool {
-    d.window_id().is_some_and(|w| ctx.memory(|m| m.areas().is_visible(&egui::LayerId::new(egui::Order::Middle, egui::Id::new(w)))))
+    d.window_id().is_some_and(|w| ctx.memory(|m| m.areas().is_visible(&egui::LayerId::new(egui::Order::Middle, egui::Id::unique(w)))))
 }
 
 /// What F1 is about now. `pointer`: whether the pointer counts (not when the request comes from

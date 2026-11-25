@@ -12,7 +12,7 @@ use crate::icons::{self, Icon};
 use crate::menus;
 use crate::theme::{T, to_color32};
 use anicraft_engine::doc::{Layer, LayerId, Timeline};
-use egui::{Pos2, Rect, Sense, Stroke, StrokeKind, WidgetType, pos2, vec2};
+use egui::{Pos2, Rect, Sense, Stroke, StrokeKind, Role, pos2, vec2};
 use serde_json::json;
 
 /// Width of one step of the tree, and the most steps drawn (deeper chains share the last).
@@ -56,12 +56,12 @@ pub struct Dot {
 /// The toggle beside the "Layers" heading: opens and closes the parenting view.
 pub fn head_toggle(app: &mut App, ui: &mut egui::Ui, painter: &egui::Painter, rect: Rect) {
     let on = app.prefs.timeline_parenting;
-    let r = ui.interact(rect, ui.id().with("parenting_view"), Sense::click());
+    let r = ui.interact(rect, ui.scope_id().with("parenting_view"), Sense::click());
     if r.hovered() || on {
         painter.rect_filled(rect, T.rc(), if on { T.accent_dim } else { T.hover });
     }
     icons::paint(painter, Rect::from_center_size(rect.center(), vec2(15.0, 15.0)), Icon::Parent, if on { T.accent_text } else { T.text_dim });
-    a11y::control(ui, &r, WidgetType::Checkbox, tr!("Parenting view"), Some(on));
+    a11y::control(ui, &r, Role::CheckBox, tr!("Parenting view"), Some(on));
     if r.on_hover_text(tr!("Parenting View: show which layer each layer follows. Drag from a layer's dot to another layer to parent it; click the dot to pick or remove the parent")).clicked() {
         toggle_view(app);
     }
@@ -93,8 +93,8 @@ pub fn row(app: &mut App, ui: &mut egui::Ui, tl: &Timeline, layer: &Layer, col: 
     }
     let at = col.dot(tl, layer.id, y);
     let hit = Rect::from_center_size(at, vec2(size, size));
-    let r = ui.interact(hit, ui.id().with(("parent_dot", layer.id.0)), Sense::click_and_drag());
-    a11y::control(ui, &r, WidgetType::Button, &dot_name(tl, layer), None);
+    let r = ui.interact(hit, ui.scope_id().with(("parent_dot", layer.id.0)), Sense::click_and_drag());
+    a11y::control(ui, &r, Role::Button, &dot_name(tl, layer), None);
     if r.drag_started_by(egui::PointerButton::Primary) && layer.can_follow() {
         app.tl_parent_drag = Some(layer.id);
     }
@@ -105,7 +105,7 @@ pub fn row(app: &mut App, ui: &mut egui::Ui, tl: &Timeline, layer: &Layer, col: 
     };
     let r = r.on_hover_text(tip);
     let id = layer.id;
-    let shown = egui::Popup::menu(&r).id(egui::Id::new(("layer_parent", id.0))).show(|ui| menu(app, ui, id));
+    let shown = egui::Popup::menu(&r).id(egui::Id::unique(("layer_parent", id.0))).show(|ui| menu(app, ui, id));
     if let Some(m) = shown {
         ui.ctx().accesskit_node_builder(m.response.id, |node| {
             node.set_role(egui::accesskit::Role::Menu);

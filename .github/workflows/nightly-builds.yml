@@ -1,0 +1,273 @@
+name: Nightly builds
+
+# Builds the unsigned Nightly flavor on all three platforms with the app's own scripts and checks
+# each artifact as the Launcher unpacks it: packaging/windows/nightly.ps1 (via
+# package.ps1 -Nightly -BuildOnly), packaging/linux/nightly.sh and packaging/macos/nightly.sh +
+# nightly-verify.sh --expect unsigned. No secrets, no signing and no environment: the real Nightly
+# is signed by the shared release-ref signer (craft-common-actions), which calls
+# packaging/windows/sign.ps1 -Required, packaging/macos/nightly-sign.sh and the Linux key.
+#
+# This check is how the three scripts stay exercised before the producer runs exist. The macOS leg
+# spends hosted Mac minutes, which are capped: it runs only with the `full-ci` label (as the other
+# expensive legs do), one app at a time, or when dispatched by hand.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-builds-${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci') && (github.event.action != 'labeled' || github.event.label.name == 'full-ci') && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: Synthetic suites and script syntax
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (contains(github.event.pull_request.labels.*.name, 'full-ci') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'full-ci'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The synthetic suites (archive, launcher, release contract, plist, Apple stand-ins)
+        run: python3 packaging/nightly-tests.py
+      - name: Shell syntax of every Nightly script
+        run: |
+          set -euo pipefail
+          for script in packaging/nightly-common.sh packaging/linux/nightly.sh \
+            packaging/linux/nightly-launch.sh packaging/linux/nightly-arch-tar.sh \
+            packaging/macos/nightly-lib.sh packaging/macos/nightly.sh \
+            packaging/macos/nightly-sign.sh packaging/macos/nightly-verify.sh; do
+            bash -n "$script"
+          done
+      - name: The Arch handoff, staged and started as the packager ships it
+        run: bash packaging/linux/nightly-arch-tar-test.sh
+
+  windows:
+    name: Nightly GUI (x86_64, unsigned)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (contains(github.event.pull_request.labels.*.name, 'full-ci') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'full-ci'))
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The release's pin (release.yml craft-fonts-ref), so the ZIP's notices match a shipped build.
+      - name: Check out craft-fonts
+        uses: storytold/craft-common-actions/actions/checkout-craft-fonts@main
+        with:
+          ref: b076417b5880bd4154bd22f00695b1d28c6bea83
+      # The i18n catalogs the interface is built with (ADR 0040).
+      - uses: storytold/craft-common-actions/actions/checkout-craft-i18n@main
+      - name: The Nightly signer and compiler guards
+        shell: pwsh
+        run: |
+          $fixtures = Join-Path $env:RUNNER_TEMP 'nightly-fixtures'
+          New-Item -ItemType Directory -Force -Path $fixtures | Out-Null
+          ./packaging/windows/nightly-package-tests.ps1 -FixtureRoot $fixtures
+          ./packaging/windows/nightly-signing-tests.ps1 -FixtureRoot $fixtures
+          ./packaging/windows/test-sign.ps1
+      # A version of the prepared Nightly form for this commit; the real one comes from the feed's
+      # identity job. Only nightly.ps1's input checks read it.
+      - name: Prepare a Nightly identity for this commit
+        shell: pwsh
+        run: |
+          $base = ((Select-String -Path Cargo.toml -Pattern '^version = "([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value -split '-')[0]
+          $sha = (git rev-parse HEAD).Trim()
+          $date = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')
+          $run = "$env:GITHUB_RUN_NUMBER.$env:GITHUB_RUN_ATTEMPT"
+          "ANICRAFT_BUILD_SHA=$sha" >> $env:GITHUB_ENV
+          "ANICRAFT_BUILD_DATE=$date" >> $env:GITHUB_ENV
+          "ANICRAFT_VERSION=$base-nightly.$($date.Replace('-','')).$run.g$($sha.Substring(0,12))" >> $env:GITHUB_ENV
+      - name: Build the unsigned Nightly GUI
+        shell: pwsh
+        env:
+          ANICRAFT_BUILD_CHANNEL: nightly-v1
+          CARGO_TARGET_DIR: ${{ runner.temp }}/nightly-targets
+          DIST: ${{ runner.temp }}/nightly-dist
+          CRAFT_FONTS_DIR: ${{ github.workspace }}/craft-fonts
+          CRAFT_FONTS_REQUIRED: "1"
+        run: ./packaging/windows/package.ps1 -Arch x64 -Nightly -BuildOnly
+      - name: Check the ZIP payload and the version query
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP "nightly-dist\anicraft-$env:ANICRAFT_VERSION-windows-x86_64-nightly.unsigned.zip"
+          if (-not (Test-Path -LiteralPath $zip)) { throw "missing $zip" }
+          $archive = [IO.Compression.ZipFile]::OpenRead($zip)
+          try {
+            $names = @($archive.Entries | ForEach-Object { $_.FullName })
+            if ('anicraft.exe' -notin $names) { throw 'the ZIP has no anicraft.exe' }
+            foreach ($forbidden in @('anicraft-cli.exe', 'portable.txt')) {
+              if ($forbidden -in $names) { throw "the Nightly ZIP must not ship $forbidden" }
+            }
+          } finally { $archive.Dispose() }
+          $stage = Join-Path $env:RUNNER_TEMP 'nightly-targets\windows-package\nightly-v1-x86_64\anicraft.exe'
+          $plain = (& $stage --version | Out-String).Trim()
+          if ($plain -cne "AniCraft $env:ANICRAFT_VERSION (nightly-v1)") { throw "the version query reports '$plain'" }
+          $launcher = (& $stage --launch-profile nightly-v1 --profile-root (Join-Path $env:RUNNER_TEMP 'profile') --version | Out-String).Trim()
+          if ($launcher -cne $plain) { throw "the Launcher's query reports '$launcher', not '$plain'" }
+      - name: Keep the unsigned ZIP
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: anicraft-nightly-windows-x86_64-unsigned
+          path: ${{ runner.temp }}/nightly-dist/anicraft-${{ env.ANICRAFT_VERSION }}-windows-x86_64-nightly.unsigned.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  linux:
+    name: Nightly tar (x86_64, unsigned)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (contains(github.event.pull_request.labels.*.name, 'full-ci') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'full-ci'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check out craft-fonts
+        uses: storytold/craft-common-actions/actions/checkout-craft-fonts@main
+        with:
+          ref: b076417b5880bd4154bd22f00695b1d28c6bea83
+      - uses: storytold/craft-common-actions/actions/checkout-craft-i18n@main
+      # The dev packages the crate needs to link (cpal's ALSA, winit's X11/Wayland, rfd's GTK).
+      - name: Install the build packages
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libxkbcommon-dev libwayland-dev libx11-dev libxrandr-dev libxi-dev libgl1-mesa-dev libgtk-3-dev libasound2-dev
+      - name: Prepare a Nightly identity for this commit
+        run: |
+          set -euo pipefail
+          base="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"].split("-")[0])')"
+          sha="$(git rev-parse HEAD)"
+          date="$(date -u +%Y-%m-%d)"
+          {
+            echo "ANICRAFT_BUILD_SHA=$sha"
+            echo "ANICRAFT_BUILD_DATE=$date"
+            echo "ANICRAFT_VERSION=$base-nightly.${date//-/}.$GITHUB_RUN_NUMBER.$GITHUB_RUN_ATTEMPT.g${sha:0:12}"
+          } >>"$GITHUB_ENV"
+      - name: Build the unsigned Nightly tar
+        env:
+          ANICRAFT_BUILD_CHANNEL: nightly-v1
+          CARGO_TARGET_DIR: ${{ runner.temp }}/nightly-targets
+          DIST: ${{ runner.temp }}/nightly-dist
+          CRAFT_FONTS_DIR: ${{ github.workspace }}/craft-fonts
+          CRAFT_FONTS_REQUIRED: "1"
+        run: bash packaging/linux/nightly.sh --arch x86_64
+      - name: Check the tar as the Launcher unpacks it, and the version query
+        run: |
+          set -euo pipefail
+          tar="$RUNNER_TEMP/nightly-dist/anicraft-$ANICRAFT_VERSION-linux-x86_64-nightly.tar.gz"
+          out="$RUNNER_TEMP/unpacked"
+          mkdir -p "$out"
+          tar -xzf "$tar" -C "$out"
+          # The standard layout: `anicraft` is the launcher and `anicraft-bin` the GUI it starts.
+          test -x "$out/anicraft"
+          test -x "$out/anicraft-bin"
+          test -f "$out/anicraft-nightly.png"
+          for notice in README.md LICENSE-MIT LICENSE-APACHE NOTICE ATTRIBUTION.md; do test -f "$out/$notice"; done
+          test "$(find "$out" -mindepth 1 -maxdepth 1 | wc -l)" -le 12
+          head -c 4 "$out/anicraft-bin" | od -An -tx1 | tr -d ' \n' | grep -qx 7f454c46
+          expected="AniCraft $ANICRAFT_VERSION (nightly-v1)"
+          # The entry point is the launcher: it starts the GUI in its own profile, before any profile
+          # exists and exactly as every installed format does.
+          plain="$("$out/anicraft" --version)"
+          test "$plain" = "$expected"
+          grep -q -- '--launch-profile nightly-v1 --profile-root' "$out/anicraft"
+          profile="$RUNNER_TEMP/does-not-exist/profile"
+          test ! -e "$profile"
+          launched="$("$out/anicraft" --launch-profile nightly-v1 --profile-root "$profile" --version)"
+          test "$launched" = "$expected"
+          test ! -e "$profile"
+          echo "tar: $plain"
+      - name: Keep the unsigned tar
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: anicraft-nightly-linux-x86_64-unsigned
+          path: ${{ runner.temp }}/nightly-dist/anicraft-${{ env.ANICRAFT_VERSION }}-linux-x86_64-nightly.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+  macos:
+    name: Nightly .app (aarch64, unsigned)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (contains(github.event.pull_request.labels.*.name, 'full-ci') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'full-ci'))
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check out craft-fonts
+        uses: storytold/craft-common-actions/actions/checkout-craft-fonts@main
+        with:
+          ref: b076417b5880bd4154bd22f00695b1d28c6bea83
+      - uses: storytold/craft-common-actions/actions/checkout-craft-i18n@main
+      - name: Add the Apple-silicon target
+        run: rustup target add aarch64-apple-darwin
+      - name: Prepare a Nightly identity for this commit
+        run: |
+          set -euo pipefail
+          base="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"].split("-")[0])')"
+          sha="$(git rev-parse HEAD)"
+          date="$(date -u +%Y-%m-%d)"
+          {
+            echo "ANICRAFT_BUILD_SHA=$sha"
+            echo "ANICRAFT_BUILD_DATE=$date"
+            echo "ANICRAFT_VERSION=$base-nightly.${date//-/}.$GITHUB_RUN_NUMBER.$GITHUB_RUN_ATTEMPT.g${sha:0:12}"
+          } >>"$GITHUB_ENV"
+      - name: Build the unsigned Nightly bundle
+        env:
+          ANICRAFT_BUILD_CHANNEL: nightly-v1
+          CARGO_TARGET_DIR: ${{ runner.temp }}/nightly-targets
+          DIST: ${{ runner.temp }}/nightly-dist
+          CRAFT_FONTS_DIR: ${{ github.workspace }}/craft-fonts
+          CRAFT_FONTS_REQUIRED: "1"
+        run: bash packaging/macos/nightly.sh --arch aarch64
+      - name: Check the archive and the bundle's version
+        run: bash packaging/macos/nightly-verify.sh --expect unsigned --input "$RUNNER_TEMP/nightly-dist/anicraft-$ANICRAFT_VERSION-macos-aarch64-nightly.zip"
+      - name: Keep the unsigned archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: anicraft-nightly-macos-aarch64-unsigned
+          path: ${{ runner.temp }}/nightly-dist/anicraft-${{ env.ANICRAFT_VERSION }}-macos-aarch64-nightly.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

@@ -495,6 +495,7 @@ fn checked(app: &App, id: &str) -> Option<bool> {
         "draw.object_drawing" => Some(app.s.style.object_drawing),
         // Rulers, grid and guides (ADR 0076).
         "view.rulers" => Some(app.s.aids.rulers),
+        "view.hide_edges" => Some(app.s.aids.hide_edges),
         "view.grid_show" => Some(app.s.aids.show_grid),
         "view.grid_snap" => Some(app.s.aids.snap_grid),
         "view.guides_show" => Some(app.s.aids.show_guides),
@@ -511,7 +512,9 @@ fn item(app: &mut App, ui: &mut egui::Ui, spec: &CommandSpec) {
         _ => crate::i18n::t_cmd(spec.id, spec.label).to_string(),
     };
     // Settings show whether they are on, as check items do.
-    let label = match checked(app, spec.id) {
+    let on = checked(app, spec.id);
+    let name = label.clone();
+    let label = match on {
         Some(true) => format!("✔ {label}"),
         Some(false) => format!("   {label}"),
         None => label,
@@ -520,6 +523,19 @@ fn item(app: &mut App, ui: &mut egui::Ui, spec: &CommandSpec) {
     // What this build can't do stays in its usual place, dimmed, saying why (the web build).
     let missing = platform::unavailable(spec.id);
     let r = ui.add_enabled(enabled(app, spec.id) && missing.is_none(), button);
+    // A setting is a check item to a screen reader too: its name without the tick drawn for
+    // the eye, and whether it is on (every toggling command, not one of them).
+    if let Some(on) = on {
+        use egui::accesskit::{Role, Toggled};
+        ui.ctx().accesskit_node_builder(r.id, |node| {
+            node.set_role(Role::MenuItemCheckBox);
+            node.set_label(name);
+            node.set_toggled(if on { Toggled::True } else { Toggled::False });
+            if let Some(key) = app.keymap.primary(spec.id) {
+                node.set_keyboard_shortcut(platform::shortcut_label(key));
+            }
+        });
+    }
     let r = match missing {
         Some(why) => r.on_disabled_hover_text(crate::i18n::t(why)),
         None => r,
@@ -654,19 +670,18 @@ pub(crate) fn menu_contents(app: &mut App, ui: &mut egui::Ui, top: &str, cmds: &
         "View" => {
             let canvas = app.stage_cache.canvas;
             let center = canvas.center();
+            let ppp = ui.ctx().pixels_per_point();
             if ui_item(ui, tr!("Zoom In"), "Ctrl+=", None) {
-                let z = app.view.zoom * 1.5;
-                app.zoom_about(canvas, center, z);
+                app.zoom_by(canvas, center, 1.5, ppp);
             }
             if ui_item(ui, tr!("Zoom Out"), "Ctrl+-", None) {
-                let z = app.view.zoom / 1.5;
-                app.zoom_about(canvas, center, z);
+                app.zoom_by(canvas, center, 1.0 / 1.5, ppp);
             }
             if ui_item(ui, tr!("Fit in Window"), "Ctrl+0", None) {
                 app.view.fit = true;
             }
             if ui_item(ui, "100%", "Ctrl+1", None) {
-                app.zoom_about(canvas, center, 1.0);
+                app.zoom_about(canvas, center, 1.0 / ppp, ppp);
             }
             ui.separator();
             if ui_item(ui, tr!("Onion Skin"), app.keymap.primary("view.onion").unwrap_or(""), Some(app.onion.ghosts)) {

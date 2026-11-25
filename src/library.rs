@@ -12,7 +12,7 @@ use anicraft_engine::StateId;
 use anicraft_engine::cmds_library::entry_json;
 use anicraft_engine::doc::library::MAX_FOLDER_DEPTH;
 use anicraft_engine::doc::{Document, FolderId, LibraryEntry, LibraryItem, SymbolKind};
-use egui::{Align2, Key, Modifiers, Pos2, Rect, Sense, Stroke, StrokeKind, WidgetType, pos2, vec2};
+use egui::{Align2, Key, Modifiers, Pos2, Rect, Sense, Stroke, StrokeKind, Role, pos2, vec2};
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
 
@@ -337,7 +337,7 @@ pub fn stage_drop(app: &mut App, ui: &egui::Ui, resp: &egui::Response, to_stage:
         return;
     }
     ui.ctx().set_cursor_icon(egui::CursorIcon::Copy);
-    let painter = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("library_drop")));
+    let painter = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("library_drop")));
     let only_sounds = items.iter().all(|i| matches!(i, LibraryItem::Sound(_)));
     if !only_sounds {
         let r = 7.0;
@@ -360,7 +360,7 @@ fn drag_ghost(app: &App, ctx: &egui::Context) {
     let (Some(first), Some(p)) = (items.first(), ctx.input(|i| i.pointer.latest_pos())) else { return };
     let name = app.s.doc.item_name(*first).unwrap_or("").to_string();
     let label = if items.len() > 1 { trn!("{name} and {n} more", "{name} and {n} more", items.len() - 1, name = name) } else { name };
-    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("library_ghost")));
+    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("library_ghost")));
     let galley = painter.layout_no_wrap(label, font(Type::Body), color(Type::Body));
     let at = p + vec2(14.0, -galley.size().y - 8.0);
     painter.rect_filled(Rect::from_min_size(at, galley.size()).expand(4.0), T.rc(), T.accent_dim);
@@ -577,7 +577,7 @@ fn list_ui(app: &mut App, ui: &mut egui::Ui, list: &[Row], unused: &HashSet<Libr
                 None => String::new(),
             };
             let name = if used_note.is_empty() { format!("{} · {}", row.name, row.detail) } else { format!("{} · {} · {}", row.name, row.detail, used_note) };
-            a11y::control(ui, &resp, WidgetType::SelectableLabel, &name, Some(selected));
+            a11y::control(ui, &resp, Role::Button, &name, Some(selected));
             let resp = resp.on_hover_text(&name);
             // Dragging rows: the selection if the row is in it, else just the row.
             if resp.drag_started() {
@@ -872,7 +872,7 @@ fn preview(app: &mut App, ui: &mut egui::Ui) {
             waveform(app, ui, inner, id);
             let play = Rect::from_min_size(pos2(r.right() - TARGET - 4.0, r.top() + 4.0), vec2(TARGET, TARGET));
             let resp = ui.put(play, egui::Button::new("▶").min_size(vec2(TARGET, TARGET)));
-            a11y::control(ui, &resp, WidgetType::Button, tr!("Play the sound"), None);
+            a11y::control(ui, &resp, Role::Button, tr!("Play the sound"), None);
             if resp.on_hover_text(tr!("Plays the sound on its own")).clicked()
                 && let Some(dec) = app.s.doc.sound(id).and_then(|x| x.decoded())
             {

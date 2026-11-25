@@ -22,12 +22,20 @@
   pwsh packaging/windows/package.ps1 -Arch x64
   pwsh packaging/windows/package.ps1 -Arch x64 -SkipBuild
   pwsh packaging/windows/package.ps1 -Arch arm64     # cross-compiled; needs the MSVC ARM64 build tools
+  pwsh packaging/windows/package.ps1 -Arch x64 -Nightly -BuildOnly
+
+  -Nightly builds the GUI-only Nightly flavor instead (nightly.ps1): that head is not an MSI, a
+  portable zip or a symbols download, must be compiled with -BuildOnly, and is signed by the
+  separate trusted step (sign.ps1 -Required), never here.
 #>
 param(
   [ValidateSet('x64', 'x86', 'arm64')] [string] $Arch = 'x64',
-  [switch] $SkipBuild
+  [switch] $SkipBuild,
+  [switch] $Nightly,
+  [switch] $BuildOnly
 )
 $ErrorActionPreference = 'Stop'
+if ($BuildOnly -and -not $Nightly) { throw '-BuildOnly is only for secret-free nightly compilation' }
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $AppId = 'ai.storyteller.anicraft'
 
@@ -58,7 +66,15 @@ New-Item -ItemType Directory -Force -Path $Dist | Out-Null
 
 Write-Output "AniCraft $Version for Windows $Arch ($Target)"
 
+# The Nightly head is the app-owned GUI ZIP from nightly.ps1: no MSI, portable zip, symbols or
+# association, and no signing here (the trusted step signs it with sign.ps1 -Required).
+if ($Nightly) {
+  & (Join-Path $PSScriptRoot 'nightly.ps1') -Arch $Arch -Version $Version -Target $Target -TargetDir $TargetDir -Dist $Dist -SkipBuild:$SkipBuild -BuildOnly:$BuildOnly
+  return
+}
+
 if (-not $SkipBuild) {
+  $env:ANICRAFT_BUILD_CHANNEL = 'stable'
   # Static CRT: no VC++ redistributable needed. Scoped to the target so host build scripts and
   # proc-macros are unaffected.
   $flagVar = 'CARGO_TARGET_' + ($Target.ToUpper() -replace '-', '_') + '_RUSTFLAGS'
@@ -85,6 +101,11 @@ foreach ($check in @(@('anicraft.exe', 2), @('anicraft-cli.exe', 3))) {
   if ($h.Machine -ne $Machine) { throw "$($check[0]) is for machine 0x$('{0:X}' -f $h.Machine), expected 0x$('{0:X}' -f $Machine) ($Arch)" }
   if ($h.Subsystem -ne $check[1]) { throw "$($check[0]) has PE subsystem $($h.Subsystem), expected $($check[1])" }
   Write-Output "ok $($check[0]): $Arch, PE subsystem $($h.Subsystem)"
+}
+# A Nightly executable carries its own identity and version (build.rs): packaging it as stable
+# would ship a window id and a version the Launcher cannot match, so refuse before staging.
+if ((Get-Item -LiteralPath (Join-Path $Bin 'anicraft.exe')).VersionInfo.ProductName -eq 'AniCraft Nightly') {
+  throw 'a nightly executable cannot be packaged as stable; use nightly.ps1 (package.ps1 -Nightly)'
 }
 $Stage = Join-Path $TargetDir "windows-package\$Arch"
 Remove-Item -Recurse -Force $Stage -ErrorAction SilentlyContinue

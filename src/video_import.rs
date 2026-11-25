@@ -236,7 +236,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
     };
     let (mut submit, mut close) = (false, false);
     let mut open = true;
-    let shown = crate::windows::new(ctx, title).id(egui::Id::new("video_import")).open(&mut open).collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, -60.0]).show(ctx, |ui| {
+    let shown = crate::windows::new(ctx, title).id(egui::Id::unique("video_import")).open(&mut open).collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, -60.0]).show(ctx, |ui| {
         ui.set_min_width(460.0);
         ui.set_max_width(520.0);
         ui.label(text(Type::Body, file_name(&d.path)).strong());
